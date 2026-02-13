@@ -2,7 +2,8 @@ const DB = {
     unidades: [],
     procedimentos: [],
     profissionais: [],
-    exames: []
+    exames: [],
+    gruposExames: [] 
 };
 
 const AppState = {
@@ -51,9 +52,12 @@ function switchScreen(screenName) {
     if (screenName === 'app') {
         els.screenWelcome.classList.remove('active');
         els.screenApp.classList.add('active');
+        localStorage.setItem('SONIA_SESSION_ACTIVE', 'true');
     } else {
         els.screenApp.classList.remove('active');
         els.screenWelcome.classList.add('active');
+        localStorage.removeItem('SONIA_SESSION_ACTIVE');
+        localStorage.removeItem('SONIA_CONFIG');
     }
 }
 
@@ -80,7 +84,6 @@ async function loadCSVData() {
             return { codigo: cod, nome: nome, isRegulado: regulado, isRetorno: nome.includes('RETORNO') };
         });
 
-        // Formato do seu CSV: cpf;nome;unidade;status
         DB.profissionais = pr.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
             const parts = l.split(';');
             return { 
@@ -91,7 +94,16 @@ async function loadCSVData() {
             };
         });
 
-        DB.exames = e.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
+        const linhasExames = e.split('\n').filter(l => l.trim());
+        if (linhasExames.length > 0) {
+            const cabecalho = linhasExames[0];
+            const gruposMatch = cabecalho.match(/\((\d+)\)/g);
+            if (gruposMatch) {
+                DB.gruposExames = gruposMatch.map(m => m.replace(/\(|\)/g, ''));
+            }
+        }
+
+        DB.exames = linhasExames.slice(1).map(l => {
             const parts = l.split(';');
             const desc = parts[26] || "";
             const match = desc.match(/\((\d+)\)/);
@@ -99,9 +111,23 @@ async function loadCSVData() {
         }).filter(ex => ex.codigo && ex.nome);
 
         els.btnIniciar.textContent = "Iniciar Nova Escala";
+        
+        checkSession();
     } catch (err) {
-        console.error("Erro ao carregar CSV:", err);
-        els.btnIniciar.textContent = "Erro ao carregar dados";
+        console.error("Erro CSV:", err);
+        els.btnIniciar.textContent = "Erro ao carregar arquivos";
+    }
+}
+
+function checkSession() {
+    const sessionActive = localStorage.getItem('SONIA_SESSION_ACTIVE');
+    const savedConfig = localStorage.getItem('SONIA_CONFIG');
+    
+    if (sessionActive === 'true' && savedConfig) {
+        AppState.config = JSON.parse(savedConfig);
+        els.displayUnidade.textContent = `${AppState.config.unidadeCnes} - ${AppState.config.unidadeNome}`;
+        els.displayCompetencia.textContent = AppState.config.competencia;
+        switchScreen('app');
     }
 }
 
@@ -118,25 +144,13 @@ function setupAutocomplete(inputEl, listEl, dataOrFunction, displayKey, valueKey
     inputEl.addEventListener('input', (e) => {
         const term = e.target.value.toUpperCase();
         listEl.innerHTML = '';
-        
-        if (inputEl.id === 'configUnidade') {
-            els.hiddenCnes.value = "";
-            AppState.config.unidadeNome = null;
-        }
-
-        if (term.length < 1) { 
-            listEl.style.display = 'none'; 
-            return; 
-        }
-        
+        if (term.length < 1) { listEl.style.display = 'none'; return; }
         const sourceData = (typeof dataOrFunction === 'function') ? dataOrFunction() : dataOrFunction;
-
         const filtered = sourceData.filter(item => {
             const val = (item[valueKey] || "").toString().toUpperCase();
             const disp = (item[displayKey] || "").toString().toUpperCase();
             return val.includes(term) || disp.includes(term);
         }).slice(0, 15);
-
         if (filtered.length > 0) {
             listEl.style.display = 'block';
             filtered.forEach(item => {
@@ -150,14 +164,9 @@ function setupAutocomplete(inputEl, listEl, dataOrFunction, displayKey, valueKey
                 };
                 listEl.appendChild(div);
             });
-        } else {
-            listEl.style.display = 'none';
-        }
+        } else { listEl.style.display = 'none'; }
     });
-
-    document.addEventListener('click', (e) => {
-        if (e.target !== inputEl) listEl.style.display = 'none';
-    });
+    document.addEventListener('click', (e) => { if (e.target !== inputEl) listEl.style.display = 'none'; });
 }
 
 function initAutocompletes() {
@@ -167,11 +176,8 @@ function initAutocompletes() {
         AppState.config.unidadeNome = item.nome;
     });
     
-    // Filtro pelo nome da unidade e apenas profissionais ATIVOS
     setupAutocomplete(els.inputProfissional, els.listProfissionais, () => {
-        return DB.profissionais.filter(p => 
-            p.unidadeNome === AppState.config.unidadeNome && p.status === "ATIVO"
-        );
+        return DB.profissionais.filter(p => p.unidadeNome === AppState.config.unidadeNome && p.status === "ATIVO");
     }, 'nome', 'cpf', (item) => {
         els.hiddenCpfProfissional.value = item.cpf;
     });
@@ -180,7 +186,11 @@ function initAutocompletes() {
         els.hiddenCodProcedimento.value = item.codigo;
         els.hiddenIsRegulado.value = item.isRegulado;
         els.hiddenIsRetorno.value = item.isRetorno;
-        if (item.codigo.endsWith("000")) {
+        
+        const codigoFormatado = item.codigo.padStart(7, '0');
+        const grupoEncontrado = DB.gruposExames.some(g => g.padStart(7, '0') === codigoFormatado);
+
+        if (grupoEncontrado) {
             els.rowExames.style.display = 'flex';
             els.inputExames.disabled = false;
         } else {
@@ -226,25 +236,20 @@ els.tipoEscala.addEventListener('change', (e) => {
 
 els.formConfig.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (!els.hiddenCnes.value) {
-        alert("Selecione uma Unidade válida.");
-        return;
-    }
+    if (!els.hiddenCnes.value) return alert("Selecione uma Unidade válida.");
     AppState.config.competencia = els.configCompetencia.value;
+    localStorage.setItem('SONIA_CONFIG', JSON.stringify(AppState.config));
     els.displayUnidade.textContent = `${els.hiddenCnes.value} - ${AppState.config.unidadeNome}`;
     els.displayCompetencia.textContent = AppState.config.competencia;
     switchScreen('app');
 });
 
-els.btnVoltar.onclick = () => {
-    if(confirm("Sair e trocar unidade?")) switchScreen('welcome');
-};
+els.btnVoltar.onclick = () => { if(confirm("Sair e trocar unidade?")) switchScreen('welcome'); };
 
 els.formEscala.addEventListener('submit', (e) => {
     e.preventDefault();
     const dias = Array.from(document.querySelectorAll('input[name="dias"]:checked')).map(cb => cb.value);
     if(dias.length === 0) return alert("Selecione ao menos um dia.");
-    
     const vagas = parseInt(els.numVagas.value);
     const minutos = parseInt(els.numMinutos.value);
     const hFim = calculateEndTime(els.horaInicio.value, minutos, vagas);
@@ -273,39 +278,21 @@ els.formEscala.addEventListener('submit', (e) => {
     AppState.escalas.push(linha);
     localStorage.setItem('SONIA_DATA', JSON.stringify(AppState.escalas));
     renderTable();
-    
-    // Reset campos
-    els.inputProcedimento.value = ""; els.hiddenCodProcedimento.value = "";
-    els.inputProfissional.value = ""; els.hiddenCpfProfissional.value = "";
-    els.horaInicio.value = ""; els.numVagas.value = "";
-    document.querySelectorAll('input[name="dias"]').forEach(cb => cb.checked = false);
+    els.formEscala.reset();
+    AppState.examesSelecionadosTemp = [];
+    renderExameTags();
 });
 
 function renderTable() {
     els.tabelaBody.innerHTML = '';
     AppState.escalas.forEach((l, i) => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${l.pa}<br><small>${l.procedimento}</small></td>
-            <td>${l.cpf}<br><small>${l.profissional}</small></td>
-            <td>${l.dias}</td>
-            <td>${l.horario}</td>
-            <td>${l.vagas}</td>
-            <td>${l.escala}</td>
-            <td>${l.minutos}</td>
-            <td>${l.agenda}</td>
-            <td>${l.exames || '-'}</td>
-            <td><button class="btn-trash" onclick="deleteLinha(${i})">🗑️</button></td>
-        `;
+        tr.innerHTML = `<td>${l.pa}<br><small>${l.procedimento}</small></td><td>${l.cpf}<br><small>${l.profissional}</small></td><td>${l.dias}</td><td>${l.horario}</td><td>${l.vagas}</td><td>${l.escala}</td><td>${l.minutos}</td><td>${l.agenda}</td><td>${l.exames || '-'}</td><td><button class="btn-trash" onclick="deleteLinha(${i})">🗑️</button></td>`;
         els.tabelaBody.appendChild(tr);
     });
 }
 
-window.deleteLinha = (i) => {
-    AppState.escalas.splice(i, 1);
-    localStorage.setItem('SONIA_DATA', JSON.stringify(AppState.escalas));
-    renderTable();
-};
+window.deleteLinha = (i) => { AppState.escalas.splice(i, 1); localStorage.setItem('SONIA_DATA', JSON.stringify(AppState.escalas)); renderTable(); };
 
 els.btnLimpar.onclick = () => { if(confirm("Limpar tudo?")) { AppState.escalas = []; localStorage.removeItem('SONIA_DATA'); renderTable(); } };
 
@@ -313,17 +300,13 @@ els.btnExportar.onclick = () => {
     if (AppState.escalas.length === 0) return alert("Tabela vazia.");
     let csv = "ups;pa;cpf;st_vigencia;dt_vigencia_inicial;dt_vigencia_final;st_quebra;tp_agenda;st_ativo;dia;hora_inicial;hora_final;fichas;fichas_min;retornos;retornos_min;reservas;reservas_min;v_pa_item;ds_observacao\n";
     AppState.escalas.forEach(l => {
-        const obs = `ESCALAS_${AppState.config.competencia}_2026`;
-        csv += `${l.ups};${l.pa};${l.cpf};1;${l.vini};${l.vfim};${l.st_quebra};${l.tp_agenda};1;${l.dias};${l.hIni};${l.hFim};${l.vagas};${l.minutos};0;0;0;0;${l.exames};${obs}\n`;
+        csv += `${l.ups};${l.pa};${l.cpf};1;${l.vini};${l.vfim};${l.st_quebra};${l.tp_agenda};1;${l.dias};${l.hIni};${l.hFim};${l.vagas};${l.minutos};0;0;0;0;${l.exames};ESCALAS_${AppState.config.competencia}_2026\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `ESCALAS_${AppState.config.unidadeNome}_${AppState.config.competencia}.csv`;
     link.click();
-    AppState.escalas = [];
-    localStorage.removeItem('SONIA_DATA');
-    renderTable();
 };
 
 document.addEventListener('DOMContentLoaded', () => {

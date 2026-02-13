@@ -53,10 +53,15 @@ function switchScreen(screenName) {
     if (screenName === 'app') {
         els.screenWelcome.classList.remove('active');
         els.screenApp.classList.add('active');
+        // Força a opacidade para remover o efeito "fantasma"
+        els.screenApp.style.opacity = "1";
+        els.screenApp.style.visibility = "visible";
         localStorage.setItem('SONIA_SESSION_ACTIVE', 'true');
     } else {
         els.screenApp.classList.remove('active');
         els.screenWelcome.classList.add('active');
+        els.screenWelcome.style.opacity = "1";
+        els.screenWelcome.style.visibility = "visible";
         localStorage.removeItem('SONIA_SESSION_ACTIVE');
         localStorage.removeItem('SONIA_CONFIG');
     }
@@ -98,7 +103,6 @@ async function loadCSVData() {
         const linhasExames = e.split('\n').filter(l => l.trim());
         if (linhasExames.length > 0) {
             const cabecalho = linhasExames[0].split(';');
-            // Mapeia quais colunas possuem códigos de grupo
             cabecalho.forEach((col, index) => {
                 const match = col.match(/\((\d+)\)/);
                 if (match) {
@@ -106,7 +110,6 @@ async function loadCSVData() {
                 }
             });
 
-            // Processa as linhas de dados vinculando o exame ao seu índice de coluna
             linhasExames.slice(1).forEach(linha => {
                 const colunas = linha.split(';');
                 colunas.forEach((conteudo, idx) => {
@@ -204,7 +207,7 @@ function initAutocompletes() {
         const grupo = DB.gruposExames.find(g => g.codigo.padStart(7, '0') === codigoFormatado);
 
         if (grupo) {
-            AppState.grupoAtivo = grupo.index; // Salva qual coluna de exames deve ser pesquisada
+            AppState.grupoAtivo = grupo.index;
             els.rowExames.style.display = 'flex';
             els.inputExames.disabled = false;
         } else {
@@ -215,7 +218,6 @@ function initAutocompletes() {
         }
     });
 
-    // REGRA: Pesquisar apenas exames que pertencem ao índice da coluna do procedimento selecionado
     setupAutocomplete(els.inputExames, els.listExames, () => {
         if (AppState.grupoAtivo === null) return [];
         return DB.exames.filter(ex => ex.colIndex === AppState.grupoAtivo);

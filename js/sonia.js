@@ -12,6 +12,8 @@ const AppState = {
 };
 
 const els = {
+    screenWelcome: document.getElementById('screen-welcome'),
+    screenApp: document.getElementById('screen-app'),
     formConfig: document.getElementById('formConfig'),
     configUnidade: document.getElementById('configUnidade'),
     listUnidades: document.getElementById('listUnidades'),
@@ -31,9 +33,11 @@ const els = {
     listProfissionais: document.getElementById('listProfissionais'),
     hiddenCpfProfissional: document.getElementById('hiddenCpfProfissional'),
     tipoEscala: document.getElementById('tipoEscala'),
+    tipoAgenda: document.getElementById('tipoAgenda'),
     numMinutos: document.getElementById('numMinutos'),
     numVagas: document.getElementById('numVagas'),
     horaInicio: document.getElementById('horaInicio'),
+    horaFim: document.getElementById('horaFim'),
     rowExames: document.getElementById('rowExames'),
     inputExames: document.getElementById('inputExames'),
     listExames: document.getElementById('listExames'),
@@ -42,6 +46,16 @@ const els = {
     btnLimpar: document.getElementById('btnLimpar'),
     btnExportar: document.getElementById('btnExportar')
 };
+
+function switchScreen(screenName) {
+    if (screenName === 'app') {
+        els.screenWelcome.classList.remove('active');
+        els.screenApp.classList.add('active');
+    } else {
+        els.screenApp.classList.remove('active');
+        els.screenWelcome.classList.add('active');
+    }
+}
 
 async function loadCSVData() {
     try {
@@ -66,15 +80,15 @@ async function loadCSVData() {
             return { codigo: cod, nome: nome, isRegulado: regulado, isRetorno: nome.includes('RETORNO') };
         });
 
-        // ATENÇÃO: Formato esperado agora: CNES;CPF;NOME
+        // Formato do seu CSV: cpf;nome;unidade;status
         DB.profissionais = pr.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
             const parts = l.split(';');
-            // Se tiver 3 colunas, usa a 1ª como CNES. Se tiver só 2 (antigo), deixa cnes null.
-            if(parts.length >= 3) {
-                return { cnes: parts[0]?.trim(), cpf: parts[1]?.trim(), nome: parts[2]?.trim() };
-            } else {
-                return { cnes: null, cpf: parts[0]?.trim(), nome: parts[1]?.trim() };
-            }
+            return { 
+                cpf: parts[0]?.trim(), 
+                nome: parts[1]?.trim(), 
+                unidadeNome: parts[2]?.trim(), 
+                status: parts[3]?.trim()?.toUpperCase() 
+            };
         });
 
         DB.exames = e.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
@@ -86,7 +100,7 @@ async function loadCSVData() {
 
         els.btnIniciar.textContent = "Iniciar Nova Escala";
     } catch (err) {
-        console.error("Erro ao carregar arquivos CSV:", err);
+        console.error("Erro ao carregar CSV:", err);
         els.btnIniciar.textContent = "Erro ao carregar dados";
     }
 }
@@ -100,7 +114,7 @@ function calculateEndTime(startTime, minutes, vagas) {
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-function setupAutocomplete(inputEl, listEl, data, displayKey, valueKey, onSelect) {
+function setupAutocomplete(inputEl, listEl, dataOrFunction, displayKey, valueKey, onSelect) {
     inputEl.addEventListener('input', (e) => {
         const term = e.target.value.toUpperCase();
         listEl.innerHTML = '';
@@ -115,8 +129,7 @@ function setupAutocomplete(inputEl, listEl, data, displayKey, valueKey, onSelect
             return; 
         }
         
-        // Verifica se 'data' é uma função (para filtro dinâmico) ou array estático
-        const sourceData = (typeof data === 'function') ? data() : data;
+        const sourceData = (typeof dataOrFunction === 'function') ? dataOrFunction() : dataOrFunction;
 
         const filtered = sourceData.filter(item => {
             const val = (item[valueKey] || "").toString().toUpperCase();
@@ -154,9 +167,11 @@ function initAutocompletes() {
         AppState.config.unidadeNome = item.nome;
     });
     
-    // Profissionais agora usa uma função para filtrar dinamicamente pelo CNES da unidade selecionada
+    // Filtro pelo nome da unidade e apenas profissionais ATIVOS
     setupAutocomplete(els.inputProfissional, els.listProfissionais, () => {
-        return DB.profissionais.filter(p => p.cnes === AppState.config.unidadeCnes);
+        return DB.profissionais.filter(p => 
+            p.unidadeNome === AppState.config.unidadeNome && p.status === "ATIVO"
+        );
     }, 'nome', 'cpf', (item) => {
         els.hiddenCpfProfissional.value = item.cpf;
     });
@@ -211,22 +226,25 @@ els.tipoEscala.addEventListener('change', (e) => {
 
 els.formConfig.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (!els.hiddenCnes.value || els.hiddenCnes.value.trim() === "") {
-        alert("ERRO: Você deve selecionar uma Unidade válida na lista de sugestões.");
-        els.configUnidade.focus();
+    if (!els.hiddenCnes.value) {
+        alert("Selecione uma Unidade válida.");
         return;
     }
     AppState.config.competencia = els.configCompetencia.value;
     els.displayUnidade.textContent = `${els.hiddenCnes.value} - ${AppState.config.unidadeNome}`;
     els.displayCompetencia.textContent = AppState.config.competencia;
-    document.getElementById('screen-welcome').classList.remove('active');
-    document.getElementById('screen-app').classList.add('active');
+    switchScreen('app');
 });
+
+els.btnVoltar.onclick = () => {
+    if(confirm("Sair e trocar unidade?")) switchScreen('welcome');
+};
 
 els.formEscala.addEventListener('submit', (e) => {
     e.preventDefault();
     const dias = Array.from(document.querySelectorAll('input[name="dias"]:checked')).map(cb => cb.value);
     if(dias.length === 0) return alert("Selecione ao menos um dia.");
+    
     const vagas = parseInt(els.numVagas.value);
     const minutos = parseInt(els.numMinutos.value);
     const hFim = calculateEndTime(els.horaInicio.value, minutos, vagas);
@@ -234,9 +252,9 @@ els.formEscala.addEventListener('submit', (e) => {
     const linha = {
         ups: AppState.config.unidadeCnes,
         pa: els.hiddenCodProcedimento.value,
-        procedimento: els.inputProcedimento.value.split(' - ')[1],
+        procedimento: els.inputProcedimento.value.split(' - ')[1] || els.inputProcedimento.value,
         cpf: els.hiddenCpfProfissional.value,
-        profissional: els.inputProfissional.value.split(' - ')[1],
+        profissional: els.inputProfissional.value.split(' - ')[1] || els.inputProfissional.value,
         dias: dias.join(' '),
         horario: `${els.horaInicio.value} às ${hFim}`,
         hIni: els.horaInicio.value,
@@ -255,10 +273,12 @@ els.formEscala.addEventListener('submit', (e) => {
     AppState.escalas.push(linha);
     localStorage.setItem('SONIA_DATA', JSON.stringify(AppState.escalas));
     renderTable();
-    els.formEscala.reset();
-    AppState.examesSelecionadosTemp = [];
-    renderExameTags();
-    els.numMinutos.value = els.tipoEscala.value === "0" ? 1 : "";
+    
+    // Reset campos
+    els.inputProcedimento.value = ""; els.hiddenCodProcedimento.value = "";
+    els.inputProfissional.value = ""; els.hiddenCpfProfissional.value = "";
+    els.horaInicio.value = ""; els.numVagas.value = "";
+    document.querySelectorAll('input[name="dias"]').forEach(cb => cb.checked = false);
 });
 
 function renderTable() {
@@ -292,22 +312,18 @@ els.btnLimpar.onclick = () => { if(confirm("Limpar tudo?")) { AppState.escalas =
 els.btnExportar.onclick = () => {
     if (AppState.escalas.length === 0) return alert("Tabela vazia.");
     let csv = "ups;pa;cpf;st_vigencia;dt_vigencia_inicial;dt_vigencia_final;st_quebra;tp_agenda;st_ativo;dia;hora_inicial;hora_final;fichas;fichas_min;retornos;retornos_min;reservas;reservas_min;v_pa_item;ds_observacao\n";
-    
     AppState.escalas.forEach(l => {
         const obs = `ESCALAS_${AppState.config.competencia}_2026`;
         csv += `${l.ups};${l.pa};${l.cpf};1;${l.vini};${l.vfim};${l.st_quebra};${l.tp_agenda};1;${l.dias};${l.hIni};${l.hFim};${l.vagas};${l.minutos};0;0;0;0;${l.exames};${obs}\n`;
     });
-
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `ESCALAS_${AppState.config.unidadeNome}_${AppState.config.competencia}_2026.csv`;
+    link.download = `ESCALAS_${AppState.config.unidadeNome}_${AppState.config.competencia}.csv`;
     link.click();
-
     AppState.escalas = [];
     localStorage.removeItem('SONIA_DATA');
     renderTable();
-    alert("Arquivo exportado e dados limpos da tela.");
 };
 
 document.addEventListener('DOMContentLoaded', () => {

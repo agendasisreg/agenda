@@ -9,7 +9,8 @@ const DB = {
 const AppState = {
     config: { unidadeCnes: null, unidadeNome: null, competencia: null },
     escalas: [],
-    examesSelecionadosTemp: []
+    examesSelecionadosTemp: [],
+    grupoAtivo: null
 };
 
 const els = {
@@ -96,22 +97,35 @@ async function loadCSVData() {
 
         const linhasExames = e.split('\n').filter(l => l.trim());
         if (linhasExames.length > 0) {
-            const cabecalho = linhasExames[0];
-            const gruposMatch = cabecalho.match(/\((\d+)\)/g);
-            if (gruposMatch) {
-                DB.gruposExames = gruposMatch.map(m => m.replace(/\(|\)/g, ''));
-            }
+            const cabecalho = linhasExames[0].split(';');
+            // Mapeia quais colunas possuem códigos de grupo
+            cabecalho.forEach((col, index) => {
+                const match = col.match(/\((\d+)\)/);
+                if (match) {
+                    DB.gruposExames.push({ codigo: match[1], index: index });
+                }
+            });
+
+            // Processa as linhas de dados vinculando o exame ao seu índice de coluna
+            linhasExames.slice(1).forEach(linha => {
+                const colunas = linha.split(';');
+                colunas.forEach((conteudo, idx) => {
+                    const desc = conteudo.trim();
+                    if (desc) {
+                        const matchExame = desc.match(/\((\d+)\)/);
+                        if (matchExame) {
+                            DB.exames.push({
+                                codigo: matchExame[1],
+                                nome: desc,
+                                colIndex: idx
+                            });
+                        }
+                    }
+                });
+            });
         }
 
-        DB.exames = linhasExames.slice(1).map(l => {
-            const parts = l.split(';');
-            const desc = parts[26] || "";
-            const match = desc.match(/\((\d+)\)/);
-            return { codigo: match ? match[1] : null, nome: desc.trim() };
-        }).filter(ex => ex.codigo && ex.nome);
-
         els.btnIniciar.textContent = "Iniciar Nova Escala";
-        
         checkSession();
     } catch (err) {
         console.error("Erro CSV:", err);
@@ -122,7 +136,6 @@ async function loadCSVData() {
 function checkSession() {
     const sessionActive = localStorage.getItem('SONIA_SESSION_ACTIVE');
     const savedConfig = localStorage.getItem('SONIA_CONFIG');
-    
     if (sessionActive === 'true' && savedConfig) {
         AppState.config = JSON.parse(savedConfig);
         els.displayUnidade.textContent = `${AppState.config.unidadeCnes} - ${AppState.config.unidadeNome}`;
@@ -188,19 +201,25 @@ function initAutocompletes() {
         els.hiddenIsRetorno.value = item.isRetorno;
         
         const codigoFormatado = item.codigo.padStart(7, '0');
-        const grupoEncontrado = DB.gruposExames.some(g => g.padStart(7, '0') === codigoFormatado);
+        const grupo = DB.gruposExames.find(g => g.codigo.padStart(7, '0') === codigoFormatado);
 
-        if (grupoEncontrado) {
+        if (grupo) {
+            AppState.grupoAtivo = grupo.index; // Salva qual coluna de exames deve ser pesquisada
             els.rowExames.style.display = 'flex';
             els.inputExames.disabled = false;
         } else {
+            AppState.grupoAtivo = null;
             els.rowExames.style.display = 'none';
             AppState.examesSelecionadosTemp = [];
             renderExameTags();
         }
     });
 
-    setupAutocomplete(els.inputExames, els.listExames, DB.exames, 'nome', 'codigo', (item) => {
+    // REGRA: Pesquisar apenas exames que pertencem ao índice da coluna do procedimento selecionado
+    setupAutocomplete(els.inputExames, els.listExames, () => {
+        if (AppState.grupoAtivo === null) return [];
+        return DB.exames.filter(ex => ex.colIndex === AppState.grupoAtivo);
+    }, 'nome', 'codigo', (item) => {
         if (!AppState.examesSelecionadosTemp.find(x => x.codigo === item.codigo)) {
             AppState.examesSelecionadosTemp.push(item);
             renderExameTags();
@@ -280,6 +299,8 @@ els.formEscala.addEventListener('submit', (e) => {
     renderTable();
     els.formEscala.reset();
     AppState.examesSelecionadosTemp = [];
+    AppState.grupoAtivo = null;
+    els.rowExames.style.display = 'none';
     renderExameTags();
 });
 

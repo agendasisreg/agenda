@@ -66,9 +66,15 @@ async function loadCSVData() {
             return { codigo: cod, nome: nome, isRegulado: regulado, isRetorno: nome.includes('RETORNO') };
         });
 
+        // ATENÇÃO: Formato esperado agora: CNES;CPF;NOME
         DB.profissionais = pr.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
             const parts = l.split(';');
-            return { cpf: parts[0]?.trim(), nome: parts[1]?.trim() };
+            // Se tiver 3 colunas, usa a 1ª como CNES. Se tiver só 2 (antigo), deixa cnes null.
+            if(parts.length >= 3) {
+                return { cnes: parts[0]?.trim(), cpf: parts[1]?.trim(), nome: parts[2]?.trim() };
+            } else {
+                return { cnes: null, cpf: parts[0]?.trim(), nome: parts[1]?.trim() };
+            }
         });
 
         DB.exames = e.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
@@ -99,7 +105,6 @@ function setupAutocomplete(inputEl, listEl, data, displayKey, valueKey, onSelect
         const term = e.target.value.toUpperCase();
         listEl.innerHTML = '';
         
-        // Se apagar o texto, limpa o valor selecionado (exige nova seleção da lista)
         if (inputEl.id === 'configUnidade') {
             els.hiddenCnes.value = "";
             AppState.config.unidadeNome = null;
@@ -110,7 +115,10 @@ function setupAutocomplete(inputEl, listEl, data, displayKey, valueKey, onSelect
             return; 
         }
         
-        const filtered = data.filter(item => {
+        // Verifica se 'data' é uma função (para filtro dinâmico) ou array estático
+        const sourceData = (typeof data === 'function') ? data() : data;
+
+        const filtered = sourceData.filter(item => {
             const val = (item[valueKey] || "").toString().toUpperCase();
             const disp = (item[displayKey] || "").toString().toUpperCase();
             return val.includes(term) || disp.includes(term);
@@ -146,7 +154,10 @@ function initAutocompletes() {
         AppState.config.unidadeNome = item.nome;
     });
     
-    setupAutocomplete(els.inputProfissional, els.listProfissionais, DB.profissionais, 'nome', 'cpf', (item) => {
+    // Profissionais agora usa uma função para filtrar dinamicamente pelo CNES da unidade selecionada
+    setupAutocomplete(els.inputProfissional, els.listProfissionais, () => {
+        return DB.profissionais.filter(p => p.cnes === AppState.config.unidadeCnes);
+    }, 'nome', 'cpf', (item) => {
         els.hiddenCpfProfissional.value = item.cpf;
     });
 
@@ -200,18 +211,14 @@ els.tipoEscala.addEventListener('change', (e) => {
 
 els.formConfig.addEventListener('submit', (e) => {
     e.preventDefault();
-    
-    // TRAVA OBRIGATÓRIA: Verifica se a unidade foi realmente selecionada da lista
     if (!els.hiddenCnes.value || els.hiddenCnes.value.trim() === "") {
         alert("ERRO: Você deve selecionar uma Unidade válida na lista de sugestões.");
         els.configUnidade.focus();
         return;
     }
-
     AppState.config.competencia = els.configCompetencia.value;
     els.displayUnidade.textContent = `${els.hiddenCnes.value} - ${AppState.config.unidadeNome}`;
     els.displayCompetencia.textContent = AppState.config.competencia;
-    
     document.getElementById('screen-welcome').classList.remove('active');
     document.getElementById('screen-app').classList.add('active');
 });

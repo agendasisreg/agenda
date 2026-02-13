@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SONIA | Sistema de Agendas</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <section id="screen-welcome" class="screen active">
+        <div class="welcome-card">
+            <div class="logo-area">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <h1>SONIA</h1>
+                <p>Sistema de Gestão de Escalas</p>
+            </div>
+            
+            <form id="formConfig">
+                <div class="form-group">
+                    <label>Unidade de Saúde (CNES - Nome)</label>
+                    <input type="text" id="configUnidade" placeholder="Digite para buscar..." autocomplete="off" required>
+                    <div id="listUnidades" class="autocomplete-list"></div>
+                    <input type="hidden" id="hiddenCnes">
+                </div>
+
+                <div class="form-group">
+                    <label>Competência (Mês)</label>
+                    <select id="configCompetencia" required>
+                        <option value="">Selecione...</option>
+                        <option value="JANEIRO">JANEIRO</option>
+                        <option value="FEVEREIRO">FEVEREIRO</option>
+                        <option value="MARCO">MARÇO</option>
+                        <option value="ABRIL">ABRIL</option>
+                        <option value="MAIO">MAIO</option>
+                        <option value="JUNHO">JUNHO</option>
+                        <option value="JULHO">JULHO</option>
+                        <option value="AGOSTO">AGOSTO</option>
+                        <option value="SETEMBRO">SETEMBRO</option>
+                        <option value="OUTUBRO">OUTUBRO</option>
+                        <option value="NOVEMBRO">NOVEMBRO</option>
+                        <option value="DEZEMBRO">DEZEMBRO</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn-primary" id="btnIniciar">Carregando dados...</button>
+            </form>
+        </div>
+    </section>
+
+    <section id="screen-app" class="screen">
+        <header class="app-header">
+            <div class="header-left">
+                <strong>SONIA</strong>
+                <span id="displayUnidade">Unidade não definida</span>
+                <span class="badge" id="displayCompetencia">MÊS</span>
+            </div>
+            <button id="btnVoltar" class="btn-text">Sair / Trocar Unidade</button>
+        </header>
+
+        <main class="app-content">
+            <div class="card form-card">
+                <h3>Nova Linha de Escala</h3>
+                <form id="formEscala">
+                    <div class="row">
+                        <div class="col-6">
+                            <label>Procedimento</label>
+                            <input type="text" id="inputProcedimento" placeholder="Busque a especialidade..." autocomplete="off" required>
+                            <div id="listProcedimentos" class="autocomplete-list"></div>
+                            <input type="hidden" id="hiddenCodProcedimento">
+                            <input type="hidden" id="hiddenIsRegulado">
+                            <input type="hidden" id="hiddenIsRetorno">
+                        </div>
+                        <div class="col-6">
+                            <label>Profissional</label>
+                            <input type="text" id="inputProfissional" placeholder="Nome ou CPF..." autocomplete="off" required>
+                            <div id="listProfissionais" class="autocomplete-list"></div>
+                            <input type="hidden" id="hiddenCpfProfissional">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-3">
+                            <label>Vigência Inicial</label>
+                            <input type="date" id="vigenciaInicio" required>
+                        </div>
+                        <div class="col-3">
+                            <label>Vigência Final</label>
+                            <input type="date" id="vigenciaFim" required>
+                        </div>
+                        <div class="col-3">
+                            <label>Tipo Escala</label>
+                            <select id="tipoEscala" required>
+                                <option value="0">Ordem de Chegada</option>
+                                <option value="1">Horário Agendado</option>
+                            </select>
+                        </div>
+                        <div class="col-3">
+                            <label>Tipo Agenda</label>
+                            <select id="tipoAgenda" required>
+                                <option value="0">Rede</option>
+                                <option value="1">Local</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-12">
+                            <label>Dias da Semana</label>
+                            <div class="week-selector">
+                                <label><input type="checkbox" name="dias" value="DOM"> DOM</label>
+                                <label><input type="checkbox" name="dias" value="SEG"> SEG</label>
+                                <label><input type="checkbox" name="dias" value="TER"> TER</label>
+                                <label><input type="checkbox" name="dias" value="QUA"> QUA</label>
+                                <label><input type="checkbox" name="dias" value="QUI"> QUI</label>
+                                <label><input type="checkbox" name="dias" value="SEX"> SEX</label>
+                                <label><input type="checkbox" name="dias" value="SAB"> SAB</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-3">
+                            <label>Hora Inicial</label>
+                            <input type="time" id="horaInicio" required>
+                        </div>
+                        <div class="col-3">
+                            <label>Hora Final (Estimada)</label>
+                            <input type="time" id="horaFim" disabled style="background-color: #f4f4f5; color: #a1a1aa;">
+                        </div>
+                        <div class="col-3">
+                            <label>Vagas</label>
+                            <input type="number" id="numVagas" min="1" required>
+                        </div>
+                        <div class="col-3">
+                            <label>Minutos</label>
+                            <input type="number" id="numMinutos" min="1" value="1" readonly required>
+                        </div>
+                    </div>
+
+                    <div class="row" id="rowExames" style="display: none; opacity: 0.5;">
+                        <div class="col-12">
+                            <label>Exames (Selecionar múltiplos)</label>
+                            <input type="text" id="inputExames" placeholder="Selecione exames..." disabled autocomplete="off">
+                            <div id="tagsExames" class="tags-container"></div>
+                            <div id="listExames" class="autocomplete-list"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Inserir na Tabela
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card table-card">
+                <div class="table-header">
+                    <h3>Dados Gerados</h3>
+                    <div class="table-actions">
+                        <button id="btnLimpar" class="btn-outline-danger">Limpar Tudo</button>
+                        <button id="btnExportar" class="btn-success">Exportar CSV</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table id="tabelaDados">
+                        <thead>
+                            <tr>
+                                <th>Procedimento</th>
+                                <th>Profissional</th>
+                                <th>Dias</th>
+                                <th>Horário</th>
+                                <th>Vagas</th>
+                                <th>Escala</th>
+                                <th>Min</th>
+                                <th>Agenda</th>
+                                <th>Exames</th>
+                                <th>Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </section>
+
+    <script src="js/sonia.js"></script>
+</body>
+</html>

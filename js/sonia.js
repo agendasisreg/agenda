@@ -53,15 +53,10 @@ function switchScreen(screenName) {
     if (screenName === 'app') {
         els.screenWelcome.classList.remove('active');
         els.screenApp.classList.add('active');
-        // Força a opacidade para remover o efeito "fantasma"
-        els.screenApp.style.opacity = "1";
-        els.screenApp.style.visibility = "visible";
         localStorage.setItem('SONIA_SESSION_ACTIVE', 'true');
     } else {
         els.screenApp.classList.remove('active');
         els.screenWelcome.classList.add('active');
-        els.screenWelcome.style.opacity = "1";
-        els.screenWelcome.style.visibility = "visible";
         localStorage.removeItem('SONIA_SESSION_ACTIVE');
         localStorage.removeItem('SONIA_CONFIG');
     }
@@ -208,7 +203,7 @@ function initAutocompletes() {
 
         if (grupo) {
             AppState.grupoAtivo = grupo.index;
-            els.rowExames.style.display = 'flex';
+            els.rowExames.style.display = 'block'; // Alterado para block para seguir o padrão dos campos
             els.inputExames.disabled = false;
         } else {
             AppState.grupoAtivo = null;

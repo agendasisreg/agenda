@@ -10,7 +10,8 @@ const AppState = {
     config: { unidadeCnes: null, unidadeNome: null, competencia: null },
     escalas: [],
     examesSelecionadosTemp: [],
-    grupoAtivo: null
+    grupoAtivo: null,
+    todosSelecionados: false
 };
 
 const els = {
@@ -41,8 +42,9 @@ const els = {
     horaInicio: document.getElementById('horaInicio'),
     horaFim: document.getElementById('horaFim'),
     rowExames: document.getElementById('rowExames'),
-    inputExames: document.getElementById('inputExames'),
-    listExames: document.getElementById('listExames'),
+    btnAbrirExames: document.getElementById('btnAbrirExames'),
+    modalExames: document.getElementById('modalExames'),
+    modalCorpo: document.getElementById('modalCorpo'),
     tagsExames: document.getElementById('tagsExames'),
     tabelaBody: document.querySelector('#tabelaDados tbody'),
     btnLimpar: document.getElementById('btnLimpar'),
@@ -101,7 +103,7 @@ async function loadCSVData() {
             cabecalho.forEach((col, index) => {
                 const match = col.match(/\((\d+)\)/);
                 if (match) {
-                    DB.gruposExames.push({ codigo: match[1], index: index });
+                    DB.gruposExames.push({ codigo: match[1], nome: col, index: index });
                 }
             });
 
@@ -112,11 +114,7 @@ async function loadCSVData() {
                     if (desc) {
                         const matchExame = desc.match(/\((\d+)\)/);
                         if (matchExame) {
-                            DB.exames.push({
-                                codigo: matchExame[1],
-                                nome: desc,
-                                colIndex: idx
-                            });
+                            DB.exames.push({ codigo: matchExame[1], nome: desc, colIndex: idx });
                         }
                     }
                 });
@@ -203,27 +201,62 @@ function initAutocompletes() {
 
         if (grupo) {
             AppState.grupoAtivo = grupo.index;
-            els.rowExames.style.display = 'block'; // Alterado para block para seguir o padrão dos campos
-            els.inputExames.disabled = false;
+            els.rowExames.style.display = 'block';
         } else {
             AppState.grupoAtivo = null;
             els.rowExames.style.display = 'none';
             AppState.examesSelecionadosTemp = [];
+            AppState.todosSelecionados = false;
             renderExameTags();
         }
-    });
-
-    setupAutocomplete(els.inputExames, els.listExames, () => {
-        if (AppState.grupoAtivo === null) return [];
-        return DB.exames.filter(ex => ex.colIndex === AppState.grupoAtivo);
-    }, 'nome', 'codigo', (item) => {
-        if (!AppState.examesSelecionadosTemp.find(x => x.codigo === item.codigo)) {
-            AppState.examesSelecionadosTemp.push(item);
-            renderExameTags();
-        }
-        els.inputExames.value = '';
     });
 }
+
+// Lógica do Modal de Exames
+els.btnAbrirExames.onclick = () => {
+    if (AppState.grupoAtivo === null) return;
+    const examesDoGrupo = DB.exames.filter(ex => ex.colIndex === AppState.grupoAtivo);
+    
+    els.modalCorpo.innerHTML = `
+        <label style="background: #eff6ff; font-weight: bold; border-bottom: 1px solid #dbeafe; margin-bottom: 10px;">
+            <input type="checkbox" id="checkTodosExames" ${AppState.todosSelecionados ? 'checked' : ''}> SELECIONAR TODOS
+        </label>
+    `;
+    
+    examesDoGrupo.forEach(ex => {
+        const isChecked = AppState.examesSelecionadosTemp.some(s => s.codigo === ex.codigo);
+        const label = document.createElement('label');
+        label.innerHTML = `<input type="checkbox" class="check-exame-item" value="${ex.codigo}" data-nome="${ex.nome}" ${isChecked ? 'checked' : ''}> ${ex.nome}`;
+        els.modalCorpo.appendChild(label);
+    });
+
+    const checkTodos = document.getElementById('checkTodosExames');
+    checkTodos.onchange = (e) => {
+        document.querySelectorAll('.check-exame-item').forEach(cb => cb.checked = e.target.checked);
+    };
+
+    els.modalExames.style.display = 'flex';
+};
+
+window.fecharModalExames = () => { els.modalExames.style.display = 'none'; };
+
+window.confirmarSelecaoExames = () => {
+    const todos = document.getElementById('checkTodosExames').checked;
+    AppState.todosSelecionados = todos;
+    
+    if (todos) {
+        AppState.examesSelecionadosTemp = [{ codigo: "TODOS", nome: "TODOS OS EXAMES DO GRUPO" }];
+    } else {
+        const selecionados = [];
+        document.querySelectorAll('.check-exame-item:checked').forEach(cb => {
+            selecionados.push({ codigo: cb.value, nome: cb.getAttribute('data-nome') });
+        });
+        AppState.examesSelecionadosTemp = selecionados;
+    }
+    
+    renderExameTags();
+    fecharModalExames();
+};
 
 function renderExameTags() {
     els.tagsExames.innerHTML = '';
@@ -237,6 +270,7 @@ function renderExameTags() {
 
 window.removeExameTag = (codigo) => {
     AppState.examesSelecionadosTemp = AppState.examesSelecionadosTemp.filter(e => e.codigo !== codigo);
+    if (codigo === "TODOS") AppState.todosSelecionados = false;
     renderExameTags();
 };
 
@@ -270,6 +304,13 @@ els.formEscala.addEventListener('submit', (e) => {
     const minutos = parseInt(els.numMinutos.value);
     const hFim = calculateEndTime(els.horaInicio.value, minutos, vagas);
 
+    let examesString = "";
+    if (AppState.todosSelecionados) {
+        examesString = "TODOS";
+    } else {
+        examesString = AppState.examesSelecionadosTemp.map(x => x.codigo).join(' ');
+    }
+
     const linha = {
         ups: AppState.config.unidadeCnes,
         pa: els.hiddenCodProcedimento.value,
@@ -286,7 +327,7 @@ els.formEscala.addEventListener('submit', (e) => {
         minutos: minutos,
         agenda: els.tipoAgenda.value === '0' ? 'Rede' : 'Local',
         tp_agenda: els.tipoAgenda.value,
-        exames: AppState.examesSelecionadosTemp.map(x => x.codigo).join(' '),
+        exames: examesString,
         vini: document.getElementById('vigenciaInicio').value.split('-').reverse().join('/'),
         vfim: document.getElementById('vigenciaFim').value.split('-').reverse().join('/')
     };
@@ -297,6 +338,7 @@ els.formEscala.addEventListener('submit', (e) => {
     els.formEscala.reset();
     AppState.examesSelecionadosTemp = [];
     AppState.grupoAtivo = null;
+    AppState.todosSelecionados = false;
     els.rowExames.style.display = 'none';
     renderExameTags();
 });

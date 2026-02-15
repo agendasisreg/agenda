@@ -6,6 +6,18 @@
     <title>SONIA | Sistema de Agendas</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
+        .modal-content { background: #fff; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
+        .list-exames-check { display: grid; grid-template-columns: 1fr; gap: 8px; }
+        .list-exames-check label { display: flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer; padding: 5px; border-radius: 4px; }
+        .list-exames-check label:hover { background: #f4f4f5; }
+        .modal-footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; text-align: right; }
+        .btn-sel-exames { width: 100%; padding: 10px; border: 1px solid #e4e4e7; border-radius: 6px; background: #fff; text-align: left; cursor: pointer; color: #71717a; }
+        .btn-sel-exames:hover { border-color: #3b82f6; }
+    </style>
 </head>
 <body>
 
@@ -144,12 +156,11 @@
                         </div>
                     </div>
 
-                    <div class="row" id="rowExames" style="display: none; opacity: 0.5;">
-                        <div class="col-6">
-                            <label>Exames (Selecionar múltiplos)</label>
-                            <input type="text" id="inputExames" placeholder="Selecione exames..." disabled autocomplete="off">
-                            <div id="tagsExames" class="tags-container"></div>
-                            <div id="listExames" class="autocomplete-list"></div>
+                    <div class="row" id="rowExames" style="display: none;">
+                        <div class="col-12">
+                            <label>Exames do Grupo</label>
+                            <button type="button" class="btn-sel-exames" id="btnAbrirExames">Clique para selecionar os exames...</button>
+                            <div id="tagsExames" class="tags-container" style="margin-top: 8px;"></div>
                         </div>
                     </div>
 
@@ -192,6 +203,20 @@
             </div>
         </main>
     </section>
+
+    <div id="modalExames" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitulo">Selecionar Exames</h3>
+                <button type="button" class="btn-text" onclick="fecharModalExames()">✕</button>
+            </div>
+            <div id="modalCorpo" class="list-exames-check">
+                </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-primary" onclick="confirmarSelecaoExames()">Confirmar Seleção</button>
+            </div>
+        </div>
+    </div>
 
     <script src="js/sonia.js"></script>
 </body>

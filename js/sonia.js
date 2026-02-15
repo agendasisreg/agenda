@@ -362,11 +362,18 @@ els.btnExportar.onclick = () => {
     AppState.escalas.forEach(l => {
         csv += `${l.ups};${l.pa};${l.cpf};1;${l.vini};${l.vfim};${l.st_quebra};${l.tp_agenda};1;${l.dias};${l.hIni};${l.hFim};${l.vagas};${l.minutos};0;0;0;0;${l.exames};ESCALAS_${AppState.config.competencia}_2026\n`;
     });
+    
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `ESCALAS_${AppState.config.unidadeNome}_${AppState.config.competencia}.csv`;
     link.click();
+
+    // Limpeza da tabela após exportar
+    AppState.escalas = [];
+    localStorage.removeItem('SONIA_DATA');
+    renderTable();
+    alert("Escalas exportadas com sucesso! A tabela foi limpa.");
 };
 
 document.addEventListener('DOMContentLoaded', () => {

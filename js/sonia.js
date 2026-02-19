@@ -101,7 +101,6 @@ async function loadCSVData() {
             };
         });
 
-        // Carregar valoresExames.csv para mapeamento financeiro
         v.split('\n').slice(1).forEach(l => {
             const parts = l.split(';');
             if (parts.length >= 3) {
@@ -162,14 +161,12 @@ function calculateEndTime(startTime, minutes, vagas, isFinanceiro) {
     const date = new Date();
     date.setHours(h, m, 0, 0);
     
-    // Regra Financeiro: Sempre 5 min depois
     if (isFinanceiro) {
         date.setMinutes(date.getMinutes() + 5);
     } else {
         date.setMinutes(date.getMinutes() + (minutes * vagas));
     }
 
-    // Regra do Arredondamento para cima em múltiplos de 5
     let currentMinutes = date.getMinutes();
     if (currentMinutes % 5 !== 0) {
         date.setMinutes(currentMinutes + (5 - (currentMinutes % 5)));
@@ -229,8 +226,8 @@ function initAutocompletes() {
         const codigoFormatado = item.codigo.padStart(7, '0');
         const grupo = DB.gruposExames.find(g => g.codigo.padStart(7, '0') === codigoFormatado);
 
-        if (grupo) {
-            AppState.grupoAtivo = grupo.index;
+        if (grupo || item.isFinanceiro) {
+            AppState.grupoAtivo = grupo ? grupo.index : null;
             els.rowExames.style.display = 'block';
         } else {
             AppState.grupoAtivo = null;
@@ -243,7 +240,9 @@ function initAutocompletes() {
 }
 
 els.btnAbrirExames.onclick = () => {
-    if (AppState.grupoAtivo === null) return;
+    const isFinanceiro = els.hiddenIsFinanceiro.value === 'true';
+    if (AppState.grupoAtivo === null && !isFinanceiro) return;
+    
     const examesDoGrupo = DB.exames.filter(ex => ex.colIndex === AppState.grupoAtivo);
     
     els.modalCorpo.innerHTML = `
@@ -356,7 +355,6 @@ els.formEscala.addEventListener('submit', (e) => {
         examesString = AppState.examesSelecionadosTemp.map(x => x.codigo).join(' ');
     }
 
-    // Cálculo Vagas CSV (Regra Financeiro)
     let vagasCSV = vagas;
     if (isFinanceiro) {
         const codP = els.hiddenCodProcedimento.value.padStart(7, '0');

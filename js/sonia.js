@@ -86,14 +86,14 @@ async function loadCSVData() {
             const cod = parts[0]?.trim();
             const nomeRaw = parts[1]?.trim() || "";
             const nome = nomeRaw.replace(/"/g, '');
-            const tipo = parts[2]?.trim().toUpperCase() || "";
+            const tipoString = parts[2]?.trim().toUpperCase() || "";
             const regulado = parts[3]?.trim().toLowerCase() === 'sim';
             return { 
                 codigo: cod, 
                 nome: nome, 
                 isRegulado: regulado, 
-                isRetorno: nome.includes('RETORNO'), 
-                isFinanceiro: tipo.includes('FINANCEIRO') 
+                isRetorno: nome.includes('RETORNO'),
+                isFinanceiro: tipoString.includes('FINANCEIRO')
             };
         });
 
@@ -162,20 +162,21 @@ function checkSession() {
 }
 
 function calculateEndTime(startTime, minutes, vagas, isFinanceiro) {
-    if (!startTime || !minutes || !vagas) return "";
+    if (!startTime) return "";
     const [h, m] = startTime.split(':').map(Number);
     const date = new Date();
     date.setHours(h, m, 0, 0);
-    
+
     if (isFinanceiro) {
         date.setMinutes(date.getMinutes() + 5);
     } else {
+        if (!minutes || !vagas) return "";
         date.setMinutes(date.getMinutes() + (minutes * vagas));
     }
 
-    let currentMinutes = date.getMinutes();
-    if (currentMinutes % 5 !== 0) {
-        date.setMinutes(currentMinutes + (5 - (currentMinutes % 5)));
+    let currentMin = date.getMinutes();
+    if (currentMin % 5 !== 0) {
+        date.setMinutes(currentMin + (5 - (currentMin % 5)));
     }
 
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
@@ -346,11 +347,9 @@ els.formEscala.addEventListener('submit', (e) => {
 
     const dias = Array.from(document.querySelectorAll('input[name="dias"]:checked')).map(cb => cb.value);
     if(dias.length === 0) return alert("Selecione ao menos um dia.");
-    
     const vagas = parseInt(els.numVagas.value);
     const minutos = parseInt(els.numMinutos.value);
     const isFinanceiro = els.hiddenIsFinanceiro.value === 'true';
-    
     const hFim = calculateEndTime(els.horaInicio.value, minutos, vagas, isFinanceiro);
 
     let examesString = "";

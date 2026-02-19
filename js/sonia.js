@@ -333,7 +333,8 @@ els.formEscala.addEventListener('submit', (e) => {
     );
 
     if (!profissionalValido || !els.inputProfissional.value.includes(cpfInformado)) {
-        alert("Erro: Selecione um Profissional da lista de sugestões.");
+        alert("Erro: Selecione um Profissional da lista de sugestões. Nomes digitados manualmente não são permitidos.");
+        els.inputProfissional.focus();
         return;
     }
 
@@ -423,7 +424,7 @@ els.btnExportar.onclick = () => {
     AppState.escalas = [];
     localStorage.removeItem('SONIA_DATA');
     renderTable();
-    alert("Escalas exportadas com sucesso!");
+    alert("Escalas exportadas com sucesso! A tabela foi limpa.");
 };
 
 document.addEventListener('DOMContentLoaded', () => {

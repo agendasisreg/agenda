@@ -85,7 +85,7 @@ async function loadCSVData() {
             const nomeRaw = parts[1]?.trim() || "";
             const nome = nomeRaw.replace(/"/g, '');
             const regulado = parts[3]?.trim().toLowerCase() === 'sim';
-            const financeiro = parts[2]?.trim().toUpperCase() === 'FINANCEIRO';
+            const financeiro = parts[2]?.trim().toUpperCase().includes('FINANCEIRO');
             return { codigo: cod, nome: nome, isRegulado: regulado, isRetorno: nome.includes('RETORNO'), isFinanceiro: financeiro };
         });
 
@@ -226,7 +226,6 @@ function initAutocompletes() {
     });
 }
 
-// Lógica do Modal de Exames
 els.btnAbrirExames.onclick = () => {
     if (AppState.grupoAtivo === null) return;
     const examesDoGrupo = DB.exames.filter(ex => ex.colIndex === AppState.grupoAtivo);
@@ -313,7 +312,6 @@ els.btnVoltar.onclick = () => { if(confirm("Sair e trocar unidade?")) switchScre
 els.formEscala.addEventListener('submit', (e) => {
     e.preventDefault();
 
-    // Validação do Profissional (Impede nomes manuais fora da lista)
     const cpfInformado = els.hiddenCpfProfissional.value;
     const profissionalValido = DB.profissionais.find(p => 
         p.cpf === cpfInformado && 
@@ -371,7 +369,7 @@ els.formEscala.addEventListener('submit', (e) => {
     AppState.todosSelecionados = false;
     els.rowExames.style.display = 'none';
     renderExameTags();
-    els.hiddenCpfProfissional.value = ""; // Limpa o CPF oculto após inserir
+    els.hiddenCpfProfissional.value = "";
 });
 
 function renderTable() {
@@ -400,7 +398,6 @@ els.btnExportar.onclick = () => {
     link.download = `ESCALAS_${AppState.config.unidadeNome}_${AppState.config.competencia}.csv`;
     link.click();
 
-    // Limpeza da tabela após exportar
     AppState.escalas = [];
     localStorage.removeItem('SONIA_DATA');
     renderTable();

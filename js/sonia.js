@@ -384,6 +384,8 @@ els.formEscala.addEventListener('submit', (e) => {
         hFim: hFim,
         vagas: vagas,
         vagasCSV: vagasParaCsv, // Inserido valor ajustado para exportar no CSV
+        isRegulado: els.hiddenIsRegulado.value === 'true', // Captura flag de regulação
+        isRetorno: els.hiddenIsRetorno.value === 'true',   // Captura flag de retorno
         escala: els.tipoEscala.value === '0' ? 'Chegada' : 'Agendado',
         st_quebra: els.tipoEscala.value,
         minutos: minutos,
@@ -425,7 +427,21 @@ els.btnExportar.onclick = () => {
     AppState.escalas.forEach(l => {
         // Usa l.vagasCSV (caso não exista, retrocede para a variável padrão l.vagas)
         const vCsv = l.vagasCSV !== undefined ? l.vagasCSV : l.vagas;
-        csv += `${l.ups};${l.pa};${l.cpf};1;${l.vini};${l.vfim};${l.st_quebra};${l.tp_agenda};1;${l.dias};${l.hIni};${l.hFim};${vCsv};${l.minutos};0;0;0;0;${l.exames};ESCALAS_${AppState.config.competencia}_2026\n`;
+        
+        let fichas = 0, fichasMin = 0, retornos = 0, retornosMin = 0, reservas = 0, reservasMin = 0;
+
+        if (l.isRegulado) {
+            reservas = vCsv;
+            reservasMin = l.minutos;
+        } else if (l.isRetorno) {
+            retornos = vCsv;
+            retornosMin = l.minutos;
+        } else {
+            fichas = vCsv;
+            fichasMin = l.minutos;
+        }
+
+        csv += `${l.ups};${l.pa};${l.cpf};1;${l.vini};${l.vfim};${l.st_quebra};${l.tp_agenda};1;${l.dias};${l.hIni};${l.hFim};${fichas};${fichasMin};${retornos};${retornosMin};${reservas};${reservasMin};${l.exames};ESCALAS_${AppState.config.competencia}_2026\n`;
     });
     
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

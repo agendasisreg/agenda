@@ -226,8 +226,8 @@ function initAutocompletes() {
         const codigoFormatado = item.codigo.padStart(7, '0');
         const grupo = DB.gruposExames.find(g => g.codigo.padStart(7, '0') === codigoFormatado);
 
-        if (grupo || item.isFinanceiro) {
-            AppState.grupoAtivo = grupo ? grupo.index : null;
+        if (grupo) {
+            AppState.grupoAtivo = grupo.index;
             els.rowExames.style.display = 'block';
         } else {
             AppState.grupoAtivo = null;
@@ -240,9 +240,7 @@ function initAutocompletes() {
 }
 
 els.btnAbrirExames.onclick = () => {
-    const isFinanceiro = els.hiddenIsFinanceiro.value === 'true';
-    if (AppState.grupoAtivo === null && !isFinanceiro) return;
-    
+    if (AppState.grupoAtivo === null) return;
     const examesDoGrupo = DB.exames.filter(ex => ex.colIndex === AppState.grupoAtivo);
     
     els.modalCorpo.innerHTML = `

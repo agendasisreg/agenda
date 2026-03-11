@@ -3,7 +3,8 @@ const DB = {
     procedimentos: [],
     profissionais: [],
     exames: [],
-    gruposExames: [] 
+    gruposExames: [],
+    valoresExames: {} // Adicionado para carregar os valores da regra financeira
 };
 
 const AppState = {
@@ -66,11 +67,12 @@ function switchScreen(screenName) {
 
 async function loadCSVData() {
     try {
-        const [u, p, pr, e] = await Promise.all([
+        const [u, p, pr, e, v] = await Promise.all([
             fetch('unidades.csv').then(r => r.text()),
             fetch('procedimentos.csv').then(r => r.text()),
             fetch('profissionais.csv').then(r => r.text()),
-            fetch('exames.csv').then(r => r.text())
+            fetch('exames.csv').then(r => r.text()),
+            fetch('valoresExames.csv').then(r => r.text()).catch(() => "") // Carrega o novo arquivo
         ]);
 
         DB.unidades = u.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
@@ -83,8 +85,9 @@ async function loadCSVData() {
             const cod = parts[0]?.trim();
             const nomeRaw = parts[1]?.trim() || "";
             const nome = nomeRaw.replace(/"/g, '');
+            const tipo = parts[2]?.trim().toUpperCase() || ""; // Obtém o tipo para teste futuro
             const regulado = parts[3]?.trim().toLowerCase() === 'sim';
-            return { codigo: cod, nome: nome, isRegulado: regulado, isRetorno: nome.includes('RETORNO') };
+            return { codigo: cod, nome: nome, tipo: tipo, isRegulado: regulado, isRetorno: nome.includes('RETORNO') };
         });
 
         DB.profissionais = pr.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
@@ -96,6 +99,20 @@ async function loadCSVData() {
                 status: parts[3]?.trim()?.toUpperCase() 
             };
         });
+
+        // Parseia o arquivo de valores (vagas * valor)
+        if (v) {
+            v.split('\n').slice(1).forEach(l => {
+                const parts = l.split(';');
+                if (parts.length >= 3) {
+                    const codMatch = parts[0].match(/\((\d+)\)/);
+                    if (codMatch) {
+                        const cod = codMatch[1].padStart(7, '0');
+                        DB.valoresExames[cod] = parseFloat(parts[2].trim().replace(',', '.')) || 0;
+                    }
+                }
+            });
+        }
 
         const linhasExames = e.split('\n').filter(l => l.trim());
         if (linhasExames.length > 0) {
@@ -140,12 +157,27 @@ function checkSession() {
     }
 }
 
-function calculateEndTime(startTime, minutes, vagas) {
-    if (!startTime || !minutes || !vagas) return "";
+function calculateEndTime(startTime, minutes, vagas, aplicaRegraFinanceiro) {
+    if (!startTime) return "";
     const [h, m] = startTime.split(':').map(Number);
     const date = new Date();
     date.setHours(h, m, 0, 0);
-    date.setMinutes(date.getMinutes() + (minutes * vagas));
+    
+    // Regra Financeira: ignora minutos*vagas, fixa 5 minutos. Caso não seja, segue regra existente.
+    if (aplicaRegraFinanceiro) {
+        date.setMinutes(date.getMinutes() + 5);
+    } else {
+        if (!minutes || !vagas) return "";
+        date.setMinutes(date.getMinutes() + (minutes * vagas));
+    }
+
+    // Regra Arredondamento: Sempre arredonda para cima em múltiplos de 5 min
+    let currentMin = date.getMinutes();
+    let remainder = currentMin % 5;
+    if (remainder !== 0) {
+        date.setMinutes(currentMin + (5 - remainder));
+    }
+
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
@@ -196,6 +228,11 @@ function initAutocompletes() {
         els.hiddenIsRegulado.value = item.isRegulado;
         els.hiddenIsRetorno.value = item.isRetorno;
         
+        // REGRA: Se for retorno, a agenda obrigatoriamente é Local ("1")
+        if (item.isRetorno) {
+            els.tipoAgenda.value = "1";
+        }
+
         const codigoFormatado = item.codigo.padStart(7, '0');
         const grupo = DB.gruposExames.find(g => g.codigo.padStart(7, '0') === codigoFormatado);
 
@@ -298,11 +335,40 @@ els.btnVoltar.onclick = () => { if(confirm("Sair e trocar unidade?")) switchScre
 
 els.formEscala.addEventListener('submit', (e) => {
     e.preventDefault();
+
+    // Validação do Profissional (Impede nomes manuais fora da lista)
+    const cpfInformado = els.hiddenCpfProfissional.value;
+    const profissionalValido = DB.profissionais.find(p => 
+        p.cpf === cpfInformado && 
+        p.unidadeNome === AppState.config.unidadeNome && 
+        p.status === "ATIVO"
+    );
+
+    if (!profissionalValido || !els.inputProfissional.value.includes(cpfInformado)) {
+        alert("Erro: Selecione um Profissional da lista de sugestões. Nomes digitados manualmente não são permitidos.");
+        els.inputProfissional.focus();
+        return;
+    }
+
     const dias = Array.from(document.querySelectorAll('input[name="dias"]:checked')).map(cb => cb.value);
     if(dias.length === 0) return alert("Selecione ao menos um dia.");
     const vagas = parseInt(els.numVagas.value);
-    const minutos = parseInt(els.numMinutos.value);
-    const hFim = calculateEndTime(els.horaInicio.value, minutos, vagas);
+    const minutes = parseInt(els.numMinutos.value);
+
+    // REGRA DE CÁLCULO
+    const isExameHabilitado = els.rowExames.style.display === 'block';
+    const proc = DB.procedimentos.find(p => p.codigo === els.hiddenCodProcedimento.value);
+    const isFinanceiro = proc && proc.tipo && proc.tipo.includes('FINANCEIRO');
+    const aplicaRegraFinanceiro = isExameHabilitado && isFinanceiro;
+
+    const hFim = calculateEndTime(els.horaInicio.value, minutes, vagas, aplicaRegraFinanceiro);
+
+    let vagasParaCsv = vagas;
+    if (aplicaRegraFinanceiro) {
+        const codP = els.hiddenCodProcedimento.value.padStart(7, '0');
+        const valor = DB.valoresExames[codP] || 0;
+        vagasParaCsv = vagas * valor;
+    }
 
     let examesString = "";
     if (AppState.todosSelecionados) {
@@ -316,15 +382,18 @@ els.formEscala.addEventListener('submit', (e) => {
         pa: els.hiddenCodProcedimento.value,
         procedimento: els.inputProcedimento.value.split(' - ')[1] || els.inputProcedimento.value,
         cpf: els.hiddenCpfProfissional.value,
-        profissional: els.inputProfissional.value.split(' - ')[1] || els.inputProfissional.value,
+        profissional: profissionalValido.nome,
         dias: dias.join(' '),
         horario: `${els.horaInicio.value} às ${hFim}`,
         hIni: els.horaInicio.value,
         hFim: hFim,
         vagas: vagas,
+        vagasCSV: vagasParaCsv, // Inserido valor ajustado para exportar no CSV
+        isRegulado: els.hiddenIsRegulado.value === 'true', // Captura flag de regulação
+        isRetorno: els.hiddenIsRetorno.value === 'true',   // Captura flag de retorno
         escala: els.tipoEscala.value === '0' ? 'Chegada' : 'Agendado',
         st_quebra: els.tipoEscala.value,
-        minutos: minutos,
+        minutos: minutes,
         agenda: els.tipoAgenda.value === '0' ? 'Rede' : 'Local',
         tp_agenda: els.tipoAgenda.value,
         exames: examesString,
@@ -341,6 +410,7 @@ els.formEscala.addEventListener('submit', (e) => {
     AppState.todosSelecionados = false;
     els.rowExames.style.display = 'none';
     renderExameTags();
+    els.hiddenCpfProfissional.value = ""; // Limpa o CPF oculto após inserir
 });
 
 function renderTable() {
@@ -360,7 +430,23 @@ els.btnExportar.onclick = () => {
     if (AppState.escalas.length === 0) return alert("Tabela vazia.");
     let csv = "ups;pa;cpf;st_vigencia;dt_vigencia_inicial;dt_vigencia_final;st_quebra;tp_agenda;st_ativo;dia;hora_inicial;hora_final;fichas;fichas_min;retornos;retornos_min;reservas;reservas_min;v_pa_item;ds_observacao\n";
     AppState.escalas.forEach(l => {
-        csv += `${l.ups};${l.pa};${l.cpf};1;${l.vini};${l.vfim};${l.st_quebra};${l.tp_agenda};1;${l.dias};${l.hIni};${l.hFim};${l.vagas};${l.minutos};0;0;0;0;${l.exames};ESCALAS_${AppState.config.competencia}_2026\n`;
+        // Usa l.vagasCSV (caso não exista, retrocede para a variável padrão l.vagas)
+        const vCsv = l.vagasCSV !== undefined ? l.vagasCSV : l.vagas;
+        
+        let fichas = 0, fichasMin = 0, retornos = 0, retornosMin = 0, reservas = 0, reservasMin = 0;
+
+        if (l.isRegulado) {
+            reservas = vCsv;
+            reservasMin = l.minutos;
+        } else if (l.isRetorno) {
+            retornos = vCsv;
+            retornosMin = l.minutos;
+        } else {
+            fichas = vCsv;
+            fichasMin = l.minutos;
+        }
+
+        csv += `${l.ups};${l.pa};${l.cpf};1;${l.vini};${l.vfim};${l.st_quebra};${l.tp_agenda};1;${l.dias};${l.hIni};${l.hFim};${fichas};${fichasMin};${retornos};${retornosMin};${reservas};${reservasMin};${l.exames};ESCALAS_${AppState.config.competencia}_2026\n`;
     });
     
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

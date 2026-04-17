@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador de Escalas - SONIA</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --text: #1e293b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
+        h1 { color: var(--primary); margin-top: 0; }
+        
+        .header-info {
+            background: #eff6ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 5px solid var(--primary);
+        }
+
+        .upload-section {
+            border: 2px dashed #cbd5e1;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            transition: 0.3s;
+        }
+
+        .upload-section:hover { border-color: var(--primary); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background-color: var(--primary);
+            color: white;
+            text-align: left;
+            padding: 12px;
+        }
+
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        tr:hover { background-color: #f1f5f9; }
+
+        .loading { color: #64748b; font-style: italic; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Visualizador de Escalas</h1>
+    
+    <div id="status" class="loading">Carregando base de dados...</div>
+
+    <div class="upload-section">
+        <p>Selecione o arquivo CSV gerado pela Sonia:</p>
+        <input type="file" id="fileInput" accept=".csv" disabled>
+    </div>
+
+    <div id="unidadeInfo" class="header-info" style="display: none;">
+        <strong>Unidade:</strong> <span id="txtUnidade"></span><br>
+        <strong>Competência:</strong> <span id="txtCompetencia"></span>
+    </div>
+
+    <table id="tabelaEscala" style="display: none;">
+        <thead>
+            <tr>
+                <th>Procedimento</th>
+                <th>Profissional</th>
+                <th>Dias</th>
+                <th>Horário</th>
+                <th>Vagas</th>
+                <th>Escala</th>
+                <th>Min</th>
+                <th>Agenda</th>
+                <th>Exames</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<script>
+    const DB = { unidades: {}, procedimentos: {}, profissionais: {} };
+
+    // Carregar bases para tradução
+    async function loadBases() {
+        try {
+            const [u, p, pr] = await Promise.all([
+                fetch('unidades.csv').then(r => r.text()),
+                fetch('procedimentos.csv').then(r => r.text()),
+                fetch('profissionais.csv').then(r => r.text())
+            ]);
+
+            u.split('\n').slice(1).forEach(l => {
+                const parts = l.split(';');
+                if(parts[0]) DB.unidades[parts[0].trim()] = parts[1]?.trim();
+            });
+
+            p.split('\n').slice(1).forEach(l => {
+                const parts = l.split(';');
+                if(parts[0]) {
+                    const cod = parts[0].trim();
+                    const nome = parts[1]?.replace(/"/g, '').trim();
+                    DB.procedimentos[cod] = nome;
+                }
+            });
+
+            pr.split('\n').slice(1).forEach(l => {
+                const parts = l.split(';');
+                if(parts[0]) DB.profissionais[parts[0].trim()] = parts[1]?.trim();
+            });
+
+            document.getElementById('status').textContent = "✅ Bases carregadas. Pronto para leitura.";
+            document.getElementById('fileInput').disabled = false;
+        } catch (err) {
+            document.getElementById('status').textContent = "❌ Erro ao carregar bases (unidades/procedimentos/profissionais.csv).";
+        }
+    }
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const content = event.target.result;
+            processarCSV(content);
+        };
+        reader.readAsText(file);
+    });
+
+    function processarCSV(csv) {
+        const linhas = csv.split('\n');
+        const corpoTabela = document.querySelector('#tabelaEscala tbody');
+        corpoTabela.innerHTML = '';
+
+        if (linhas.length < 2) return;
+
+        // Tenta pegar info da unidade pela primeira linha de dados
+        const primeiraLinha = linhas[1].split(';');
+        if(primeiraLinha.length > 1) {
+            const cnes = primeiraLinha[0].trim();
+            const obs = primeiraLinha[19] || ""; 
+            const compMatch = obs.match(/ESCALAS_(.*)_2026/);
+            
+            document.getElementById('txtUnidade').textContent = `${cnes} - ${DB.unidades[cnes] || 'Não encontrado'}`;
+            document.getElementById('txtCompetencia').textContent = compMatch ? compMatch[1] : 'Não identificada';
+            document.getElementById('unidadeInfo').style.display = 'block';
+        }
+
+        linhas.slice(1).forEach(linha => {
+            const c = linha.split(';');
+            if (c.length < 10) return;
+
+            const tr = document.createElement('tr');
+            
+            // Lógica para Vagas (Reservas, Retornos ou Fichas)
+            const vagas = c[16] !== "0" ? c[16] : (c[14] !== "0" ? c[14] : c[12]);
+            const minutos = c[17] !== "0" ? c[17] : (c[15] !== "0" ? c[15] : c[13]);
+
+            tr.innerHTML = `
+                <td><strong>${c[1]}</strong><br>${DB.procedimentos[c[1]] || '---'}</td>
+                <td><strong>${c[2]}</strong><br>${DB.profissionais[c[2]] || '---'}</td>
+                <td>${c[9]}</td>
+                <td>${c[10]} às ${c[11]}</td>
+                <td>${vagas}</td>
+                <td>${c[6] === '0' ? 'Chegada' : 'Agendado'}</td>
+                <td>${minutos}</td>
+                <td>${c[7] === '0' ? 'Rede' : 'Local'}</td>
+                <td>${c[18] || '-'}</td>
+            `;
+            corpoTabela.appendChild(tr);
+        });
+
+        document.getElementById('tabelaEscala').style.display = 'table';
+    }
+
+    loadBases();
+</script>
+
+</body>
+</html>

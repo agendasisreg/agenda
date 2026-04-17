@@ -136,7 +136,11 @@
 
             pr.split('\n').slice(1).forEach(l => {
                 const parts = l.split(';');
-                if(parts[0]) DB.profissionais[parts[0].trim()] = parts[1]?.trim();
+                if(parts[0]) {
+                    // CORREÇÃO: Força o CPF a ser string e ter 11 dígitos com zeros à esquerda
+                    const cpf = parts[0].trim().padStart(11, '0');
+                    DB.profissionais[cpf] = parts[1]?.trim();
+                }
             });
 
             document.getElementById('status').textContent = "✅ Bases carregadas. Pronto para leitura.";
@@ -183,13 +187,16 @@
 
             const tr = document.createElement('tr');
             
+            // CORREÇÃO: Formata o CPF vindo do arquivo da Sonia também
+            const cpfLido = c[2].trim().padStart(11, '0');
+
             // Lógica para Vagas (Reservas, Retornos ou Fichas)
             const vagas = c[16] !== "0" ? c[16] : (c[14] !== "0" ? c[14] : c[12]);
             const minutos = c[17] !== "0" ? c[17] : (c[15] !== "0" ? c[15] : c[13]);
 
             tr.innerHTML = `
                 <td><strong>${c[1]}</strong><br>${DB.procedimentos[c[1]] || '---'}</td>
-                <td><strong>${c[2]}</strong><br>${DB.profissionais[c[2]] || '---'}</td>
+                <td><strong>${cpfLido}</strong><br>${DB.profissionais[cpfLido] || '---'}</td>
                 <td>${c[9]}</td>
                 <td>${c[10]} às ${c[11]}</td>
                 <td>${vagas}</td>

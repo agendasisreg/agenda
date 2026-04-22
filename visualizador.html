@@ -231,7 +231,8 @@
 
     function verificarConflito(linhaAtual) {
         const conflitos = dadosEscala.filter(l => {
-            if (l.id === linhaAtual.id || l.cpf !== linhaAtual.cpf) return false;
+            // Regra atualizada: ignora se for a mesma linha, CPF diferente ou PROCEDIMENTO diferente
+            if (l.id === linhaAtual.id || l.cpf !== linhaAtual.cpf || l.pa !== linhaAtual.pa) return false;
             
             const diasA = linhaAtual.dias.split(' ');
             const diasB = l.dias.split(' ');
@@ -260,7 +261,7 @@
 
             tr.innerHTML = `
                 <td><small>${l.pa}</small><br>${DB.procedimentos[l.pa] || '---'}</td>
-                <td><small>${l.cpf}</small><br>${DB.profissionais[l.cpf] || '---'}${temConflito ? '<span class="badge-conflito">CONFLITO HORÁRIO</span>' : ''}</td>
+                <td><small>${l.cpf}</small><br>${DB.profissionais[l.cpf] || '---'}${temConflito ? '<span class="badge-conflito">CONFLITO NO PROCEDIMENTO</span>' : ''}</td>
                 <td><input type="text" value="${l.dias}" onchange="atualizarDados(${l.id}, 'dias', this.value)"></td>
                 <td><input type="text" value="${l.h_ini}" onchange="atualizarDados(${l.id}, 'h_ini', this.value)"></td>
                 <td><input type="text" value="${l.h_fim}" onchange="atualizarDados(${l.id}, 'h_fim', this.value)"></td>
@@ -278,7 +279,7 @@
     function atualizarDados(id, campo, valor) {
         const index = dadosEscala.findIndex(d => d.id === id);
         dadosEscala[index][campo] = valor;
-        renderizarTabela(); // Re-renderiza para checar novos conflitos
+        renderizarTabela();
     }
 
     function atualizarVagas(id, valor) {

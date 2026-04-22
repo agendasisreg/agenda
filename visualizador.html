@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visualizador de Escalas - SONIA</title>
+    <title>Editor e Analisador de Escalas - SONIA</title>
     <style>
         :root {
             --primary: #2563eb;
+            --danger: #ef4444;
+            --warning: #f59e0b;
             --bg: #f8fafc;
             --text: #1e293b;
         }
@@ -20,7 +22,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1300px;
             margin: 0 auto;
             background: white;
             padding: 30px;
@@ -28,7 +30,14 @@
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
         }
 
-        h1 { color: var(--primary); margin-top: 0; }
+        .header-flex {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        h1 { color: var(--primary); margin: 0; }
         
         .header-info {
             background: #eff6ff;
@@ -44,49 +53,83 @@
             text-align: center;
             border-radius: 8px;
             margin-bottom: 20px;
-            transition: 0.3s;
         }
-
-        .upload-section:hover { border-color: var(--primary); }
 
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
 
         th {
             background-color: var(--primary);
             color: white;
-            text-align: left;
             padding: 12px;
+            position: sticky;
+            top: 0;
         }
 
         td {
-            padding: 10px;
+            padding: 8px;
             border-bottom: 1px solid #e2e8f0;
         }
 
-        tr:hover { background-color: #f1f5f9; }
+        .conflito {
+            background-color: #fee2e2 !important;
+            color: #991b1b;
+        }
+
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .btn-save {
+            background-color: #10b981;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+
+        .btn-save:hover { background-color: #059669; }
 
         .loading { color: #64748b; font-style: italic; }
+        .badge-conflito {
+            background: var(--danger);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            display: block;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Visualizador de Escalas</h1>
+    <div class="header-flex">
+        <h1>Editor e Analisador Sonia</h1>
+        <button id="btnExportar" class="btn-save" style="display: none;" onclick="exportarCorrigido()">Exportar CSV Corrigido</button>
+    </div>
     
     <div id="status" class="loading">Carregando base de dados...</div>
 
     <div class="upload-section">
-        <p>Selecione o arquivo CSV gerado pela Sonia:</p>
+        <p>Selecione o arquivo CSV para análise e correção:</p>
         <input type="file" id="fileInput" accept=".csv" disabled>
     </div>
 
     <div id="unidadeInfo" class="header-info" style="display: none;">
-        <strong>Unidade:</strong> <span id="txtUnidade"></span><br>
+        <strong>Unidade:</strong> <span id="txtUnidade"></span> | 
         <strong>Competência:</strong> <span id="txtCompetencia"></span>
     </div>
 
@@ -96,22 +139,23 @@
                 <th>Procedimento</th>
                 <th>Profissional</th>
                 <th>Dias</th>
-                <th>Horário</th>
+                <th>Início</th>
+                <th>Fim</th>
                 <th>Vagas</th>
-                <th>Escala</th>
+                <th>Escala (0/1)</th>
                 <th>Min</th>
-                <th>Agenda</th>
+                <th>Agenda (0/1)</th>
                 <th>Exames</th>
             </tr>
         </thead>
-        <tbody></tbody>
+        <tbody id="corpoTabela"></tbody>
     </table>
 </div>
 
 <script>
     const DB = { unidades: {}, procedimentos: {}, profissionais: {} };
+    let dadosEscala = [];
 
-    // Carregar bases para tradução
     async function loadBases() {
         try {
             const [u, p, pr] = await Promise.all([
@@ -127,92 +171,145 @@
 
             p.split('\n').slice(1).forEach(l => {
                 const parts = l.split(';');
-                if(parts[0]) {
-                    const cod = parts[0].trim();
-                    const nome = parts[1]?.replace(/"/g, '').trim();
-                    DB.procedimentos[cod] = nome;
-                }
+                if(parts[0]) DB.procedimentos[parts[0].trim()] = parts[1]?.replace(/"/g, '').trim();
             });
 
             pr.split('\n').slice(1).forEach(l => {
                 const parts = l.split(';');
                 if(parts[0]) {
-                    // CORREÇÃO: Força o CPF a ser string e ter 11 dígitos com zeros à esquerda
                     const cpf = parts[0].trim().padStart(11, '0');
                     DB.profissionais[cpf] = parts[1]?.trim();
                 }
             });
 
-            document.getElementById('status').textContent = "✅ Bases carregadas. Pronto para leitura.";
+            document.getElementById('status').textContent = "✅ Bases carregadas. Aguardando arquivo.";
             document.getElementById('fileInput').disabled = false;
         } catch (err) {
-            document.getElementById('status').textContent = "❌ Erro ao carregar bases (unidades/procedimentos/profissionais.csv).";
+            document.getElementById('status').textContent = "❌ Erro ao carregar arquivos de base.";
         }
     }
 
     document.getElementById('fileInput').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
-
         const reader = new FileReader();
-        reader.onload = function(event) {
-            const content = event.target.result;
-            processarCSV(content);
-        };
+        reader.onload = (event) => processarCSV(event.target.result);
         reader.readAsText(file);
     });
 
     function processarCSV(csv) {
         const linhas = csv.split('\n');
-        const corpoTabela = document.querySelector('#tabelaEscala tbody');
-        corpoTabela.innerHTML = '';
-
+        dadosEscala = [];
+        
         if (linhas.length < 2) return;
 
-        // Tenta pegar info da unidade pela primeira linha de dados
-        const primeiraLinha = linhas[1].split(';');
-        if(primeiraLinha.length > 1) {
-            const cnes = primeiraLinha[0].trim();
-            const obs = primeiraLinha[19] || ""; 
-            const compMatch = obs.match(/ESCALAS_(.*)_2026/);
-            
-            document.getElementById('txtUnidade').textContent = `${cnes} - ${DB.unidades[cnes] || 'Não encontrado'}`;
-            document.getElementById('txtCompetencia').textContent = compMatch ? compMatch[1] : 'Não identificada';
-            document.getElementById('unidadeInfo').style.display = 'block';
-        }
-
-        linhas.slice(1).forEach(linha => {
+        linhas.slice(1).forEach((linha, index) => {
             const c = linha.split(';');
-            if (c.length < 10) return;
+            if (c.length < 15) return;
 
-            const tr = document.createElement('tr');
-            
-            // CORREÇÃO: Formata o CPF vindo do arquivo da Sonia também
-            const cpfLido = c[2].trim().padStart(11, '0');
-
-            // Lógica para Vagas (Reservas, Retornos ou Fichas)
-            const vagas = c[16] !== "0" ? c[16] : (c[14] !== "0" ? c[14] : c[12]);
-            const minutos = c[17] !== "0" ? c[17] : (c[15] !== "0" ? c[15] : c[13]);
-
-            tr.innerHTML = `
-                <td><strong>${c[1]}</strong><br>${DB.procedimentos[c[1]] || '---'}</td>
-                <td><strong>${cpfLido}</strong><br>${DB.profissionais[cpfLido] || '---'}</td>
-                <td>${c[9]}</td>
-                <td>${c[10]} às ${c[11]}</td>
-                <td>${vagas}</td>
-                <td>${c[6] === '0' ? 'Chegada' : 'Agendado'}</td>
-                <td>${minutos}</td>
-                <td>${c[7] === '0' ? 'Rede' : 'Local'}</td>
-                <td>${c[18] || '-'}</td>
-            `;
-            corpoTabela.appendChild(tr);
+            dadosEscala.push({
+                id: index,
+                ups: c[0], pa: c[1], cpf: c[2].trim().padStart(11, '0'),
+                st_vig: c[3], v_ini: c[4], v_fim: c[5], st_quebra: c[6],
+                tp_agenda: c[7], st_ativo: c[8], dias: c[9],
+                h_ini: c[10], h_fim: c[11],
+                fichas: c[12], f_min: c[13],
+                retornos: c[14], r_min: c[15],
+                reservas: c[16], res_min: c[17],
+                exames: c[18] || "", obs: c[19] || ""
+            });
         });
 
+        const info = dadosEscala[0];
+        document.getElementById('txtUnidade').textContent = `${info.ups} - ${DB.unidades[info.ups] || '---'}`;
+        document.getElementById('txtCompetencia').textContent = info.obs.match(/ESCALAS_(.*)_2026/)?.[1] || "---";
+        document.getElementById('unidadeInfo').style.display = 'block';
+        document.getElementById('btnExportar').style.display = 'block';
+        
+        renderizarTabela();
+    }
+
+    function verificarConflito(linhaAtual) {
+        const conflitos = dadosEscala.filter(l => {
+            if (l.id === linhaAtual.id || l.cpf !== linhaAtual.cpf) return false;
+            
+            const diasA = linhaAtual.dias.split(' ');
+            const diasB = l.dias.split(' ');
+            const temDiaComum = diasA.some(d => diasB.includes(d));
+            
+            if (!temDiaComum) return false;
+
+            const inicioA = linhaAtual.h_ini.replace(':', '');
+            const fimA = linhaAtual.h_fim.replace(':', '');
+            const inicioB = l.h_ini.replace(':', '');
+            const fimB = l.h_fim.replace(':', '');
+
+            return (inicioA < fimB && fimA > inicioB);
+        });
+        return conflitos.length > 0;
+    }
+
+    function renderizarTabela() {
+        const corpo = document.getElementById('corpoTabela');
+        corpo.innerHTML = '';
+
+        dadosEscala.forEach(l => {
+            const temConflito = verificarConflito(l);
+            const tr = document.createElement('tr');
+            if (temConflito) tr.className = 'conflito';
+
+            tr.innerHTML = `
+                <td><small>${l.pa}</small><br>${DB.procedimentos[l.pa] || '---'}</td>
+                <td><small>${l.cpf}</small><br>${DB.profissionais[l.cpf] || '---'}${temConflito ? '<span class="badge-conflito">CONFLITO HORÁRIO</span>' : ''}</td>
+                <td><input type="text" value="${l.dias}" onchange="atualizarDados(${l.id}, 'dias', this.value)"></td>
+                <td><input type="text" value="${l.h_ini}" onchange="atualizarDados(${l.id}, 'h_ini', this.value)"></td>
+                <td><input type="text" value="${l.h_fim}" onchange="atualizarDados(${l.id}, 'h_fim', this.value)"></td>
+                <td><input type="number" value="${l.reservas !== "0" ? l.reservas : (l.retornos !== "0" ? l.retornos : l.fichas)}" onchange="atualizarVagas(${l.id}, this.value)"></td>
+                <td><input type="number" value="${l.st_quebra}" onchange="atualizarDados(${l.id}, 'st_quebra', this.value)"></td>
+                <td><input type="number" value="${l.res_min !== "0" ? l.res_min : (l.r_min !== "0" ? l.r_min : l.f_min)}" onchange="atualizarMinutos(${l.id}, this.value)"></td>
+                <td><input type="number" value="${l.tp_agenda}" onchange="atualizarDados(${l.id}, 'tp_agenda', this.value)"></td>
+                <td><input type="text" value="${l.exames}" onchange="atualizarDados(${l.id}, 'exames', this.value)"></td>
+            `;
+            corpo.appendChild(tr);
+        });
         document.getElementById('tabelaEscala').style.display = 'table';
+    }
+
+    function atualizarDados(id, campo, valor) {
+        const index = dadosEscala.findIndex(d => d.id === id);
+        dadosEscala[index][campo] = valor;
+        renderizarTabela(); // Re-renderiza para checar novos conflitos
+    }
+
+    function atualizarVagas(id, valor) {
+        const l = dadosEscala.find(d => d.id === id);
+        if (l.reservas !== "0") l.reservas = valor;
+        else if (l.retornos !== "0") l.retornos = valor;
+        else l.fichas = valor;
+    }
+
+    function atualizarMinutos(id, valor) {
+        const l = dadosEscala.find(d => d.id === id);
+        if (l.res_min !== "0") l.res_min = valor;
+        else if (l.r_min !== "0") l.r_min = valor;
+        else l.f_min = valor;
+    }
+
+    function exportarCorrigido() {
+        let csv = "ups;pa;cpf;st_vigencia;dt_vigencia_inicial;dt_vigencia_final;st_quebra;tp_agenda;st_ativo;dia;hora_inicial;hora_final;fichas;fichas_min;retornos;retornos_min;reservas;reservas_min;v_pa_item;ds_observacao\n";
+        
+        dadosEscala.forEach(l => {
+            csv += `${l.ups};${l.pa};${l.cpf};${l.st_vig};${l.v_ini};${l.v_fim};${l.st_quebra};${l.tp_agenda};${l.st_ativo};${l.dias};${l.h_ini};${l.h_fim};${l.fichas};${l.f_min};${l.retornos};${l.r_min};${l.reservas};${l.res_min};${l.exames};${l.obs}\n`;
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `CORRIGIDO_${document.getElementById('txtUnidade').textContent.split(' - ')[0]}.csv`;
+        link.click();
     }
 
     loadBases();
 </script>
-
 </body>
 </html>

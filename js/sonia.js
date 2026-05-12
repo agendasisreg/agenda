@@ -83,18 +83,31 @@ async function loadCSVData() {
             return { cnes: parts[0]?.trim(), nome: parts[1]?.trim() };
         });
 
-        let cnesAtual = "";
-        pu.split('\n').slice(1).forEach(l => {
-            const parts = l.split(';');
-            if (parts[0] && parts[0].trim() !== "") {
-                cnesAtual = parts[0].trim();
+        // MAPEAMENTO CORRIGIDO PARA CSV COM CÉLULAS VAZIAS
+        let ultimoCnesLido = "";
+        const linhasPermissoes = pu.split('\n').slice(1);
+        
+        linhasPermissoes.forEach(linha => {
+            if (!linha.trim()) return;
+            const colunas = linha.split(';');
+            
+            // Se a primeira coluna tem valor, atualiza o CNES de referência
+            if (colunas[0] && colunas[0].trim() !== "") {
+                ultimoCnesLido = colunas[0].trim();
             }
-            if (cnesAtual) {
-                if (!DB.procedimentosPorUnidade[cnesAtual]) {
-                    DB.procedimentosPorUnidade[cnesAtual] = { procedimentos: new Set(), subitens: new Set() };
+
+            if (ultimoCnesLido) {
+                if (!DB.procedimentosPorUnidade[ultimoCnesLido]) {
+                    DB.procedimentosPorUnidade[ultimoCnesLido] = { procedimentos: new Set(), subitens: new Set() };
                 }
-                if (parts[2]) DB.procedimentosPorUnidade[cnesAtual].procedimentos.add(parts[2].trim());
-                if (parts[4]) DB.procedimentosPorUnidade[cnesAtual].subitens.add(parts[4].trim());
+                
+                // Pega o código do procedimento (Coluna C / Índice 2)
+                const codProc = colunas[2] ? colunas[2].trim() : "";
+                if (codProc) DB.procedimentosPorUnidade[ultimoCnesLido].procedimentos.add(codProc);
+                
+                // Pega o código do sub-item (Coluna E / Índice 4)
+                const codSub = colunas[4] ? colunas[4].trim() : "";
+                if (codSub) DB.procedimentosPorUnidade[ultimoCnesLido].subitens.add(codSub);
             }
         });
 
@@ -242,7 +255,11 @@ function initAutocompletes() {
         const cnes = AppState.config.unidadeCnes;
         const regras = DB.procedimentosPorUnidade[cnes];
         if (!regras) return [];
-        return DB.procedimentos.filter(p => regras.procedimentos.has(p.codigo));
+        return DB.procedimentos.filter(p => {
+            // Compara os códigos de procedimento removendo possíveis pontos ou espaços
+            const codLimpo = p.codigo.replace(/\./g, '').trim();
+            return Array.from(regras.procedimentos).some(perm => perm.replace(/\./g, '').trim() === codLimpo);
+        });
     }, 'nome', 'codigo', (item) => {
         els.hiddenCodProcedimento.value = item.codigo;
         els.hiddenIsRegulado.value = item.isRegulado;
@@ -293,9 +310,11 @@ els.btnAbrirExames.onclick = () => {
     if (AppState.grupoAtivo === null) return;
     const cnes = AppState.config.unidadeCnes;
     const regras = DB.procedimentosPorUnidade[cnes];
+    
     const examesDoGrupo = DB.exames.filter(ex => {
         const pertenceAoGrupo = ex.colIndex === AppState.grupoAtivo;
-        const estaPermitido = regras && regras.subitens.has(ex.codigo);
+        const codExLimpo = ex.codigo.replace(/\./g, '').trim();
+        const estaPermitido = regras && Array.from(regras.subitens).some(perm => perm.replace(/\./g, '').trim() === codExLimpo);
         return pertenceAoGrupo && estaPermitido;
     });
 
@@ -412,7 +431,6 @@ function checkLocalConflict(newCpf, newPa, newDays, newHIni, newHFim) {
 els.formEscala.addEventListener('submit', (e) => {
     e.preventDefault();
 
-    // VALIDAÇÃO DA VIGÊNCIA (NOVO)
     const vIniInput = document.getElementById('vigenciaInicio').value;
     const vFimInput = document.getElementById('vigenciaFim').value;
     

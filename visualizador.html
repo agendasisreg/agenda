@@ -11,8 +11,8 @@
         .container { max-width: 100%; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
         h1 { font-size: 1.3rem; color: var(--primary); display: flex; align-items: center; gap: 10px; margin-top: 0; }
         
-        .upload-section { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        .upload-area { border: 2px dashed var(--border); padding: 15px; text-align: center; border-radius: 8px; cursor: pointer; background: #fff; transition: 0.3s; }
+        .upload-section { margin-bottom: 20px; }
+        .upload-area { border: 2px dashed var(--border); padding: 25px; text-align: center; border-radius: 8px; cursor: pointer; background: #fff; transition: 0.3s; }
         .upload-area:hover { border-color: var(--primary); }
         .upload-area.loaded { border-style: solid; border-color: var(--primary); background: #f0fdf4; }
 
@@ -26,7 +26,7 @@
         td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
         tr:hover { background: #f8fafc; }
         
-        input[type="text"], input[type="number"] { width: 100%; border: 1px solid transparent; padding: 4px; font-family: inherit; font-size: inherit; background: transparent; }
+        input[type="text"], input[type="number"], select { width: 100%; border: 1px solid transparent; padding: 4px; font-family: inherit; font-size: inherit; background: transparent; }
         input:focus { border-color: var(--primary); background: white; outline: none; }
         
         .conflito { background-color: #fef2f2 !important; }
@@ -34,24 +34,22 @@
         .tag-rede { background: #dcfce7; color: #166534; }
         .tag-local { background: #fee2e2; color: #991b1b; }
         .info-label { display: block; font-size: 0.6rem; color: #64748b; font-weight: bold; }
-        .nome-exibicao { display: block; font-weight: 600; color: #0f172a; margin-bottom: 2px; }
+        .nome-exibicao { display: block; font-weight: 600; color: #0f172a; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; }
+        
+        #loadingOverlay { font-size: 0.8rem; color: #64748b; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>🔍 Editor de Escalas CSV</h1>
+    <div id="loadingOverlay">Carregando base de dados...</div>
 
     <div class="upload-section">
         <div class="upload-area" id="dropZoneEscala">
-            <strong>1. Carregar Escala (CSV)</strong><br>
-            <small id="statusEscala">Clique ou arraste o arquivo</small>
+            <strong>Carregar Arquivo de Escala (CSV)</strong><br>
+            <small id="statusEscala">Clique ou arraste o arquivo enviado pela unidade</small>
             <input type="file" id="fileEscala" accept=".csv" style="display: none;">
-        </div>
-        <div class="upload-area" id="dropZoneAux">
-            <strong>2. Referências (Opcional)</strong><br>
-            <small>procedimentos_unidades.csv / profissionais.csv</small>
-            <input type="file" id="fileAux" accept=".csv" multiple style="display: none;">
         </div>
     </div>
 
@@ -62,11 +60,11 @@
         </div>
     </div>
 
-    <div style="overflow-x: auto; max-height: 600px;">
+    <div style="overflow-x: auto; max-height: 650px;">
         <table id="tabelaDados">
             <thead>
                 <tr>
-                    <th>UPS / Proc</th>
+                    <th>Unidade / Proc</th>
                     <th>Profissional (CPF)</th>
                     <th>Vigência</th>
                     <th>Dias</th>
@@ -90,31 +88,36 @@
     let dicioUnid = {};
 
     const fileEscala = document.getElementById('fileEscala');
-    const fileAux = document.getElementById('fileAux');
     const tbody = document.querySelector('#tabelaDados tbody');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+
+    async function carregarBasesLocais() {
+        try {
+            const [resProcs, resProf] = await Promise.all([
+                fetch('procedimentos_unidades.csv').then(r => r.text()),
+                fetch('profissionais.csv').then(r => r.text())
+            ]);
+
+            resProf.split('\n').slice(1).forEach(l => {
+                const c = l.split(';');
+                if (c[0] && c[1]) dicioProf[c[0].trim().padStart(11, '0')] = c[1].trim();
+            });
+
+            resProcs.split('\n').slice(1).forEach(l => {
+                const c = l.split(';');
+                if (c[0] && c[1]) dicioUnid[c[0].trim().padStart(7, '0')] = c[1].trim();
+                if (c[2] && c[3]) dicioProcs[c[2].trim().padStart(7, '0')] = c[3].trim();
+            });
+
+            loadingOverlay.innerHTML = "✅ Bases de dados carregadas.";
+            setTimeout(() => loadingOverlay.style.display = 'none', 2000);
+        } catch (err) {
+            loadingOverlay.innerHTML = "⚠️ Erro ao carregar arquivos locais (procedimentos_unidades.csv ou profissionais.csv). Certifique-se que estão na mesma pasta.";
+            console.error(err);
+        }
+    }
 
     document.getElementById('dropZoneEscala').onclick = () => fileEscala.click();
-    document.getElementById('dropZoneAux').onclick = () => fileAux.click();
-
-    fileAux.onchange = async (e) => {
-        for (let file of e.target.files) {
-            const text = await file.text();
-            if (file.name.includes('profissionais')) {
-                text.split('\n').slice(1).forEach(l => {
-                    const c = l.split(';');
-                    if (c[0] && c[1]) dicioProf[c[0].trim().padStart(11, '0')] = c[1].trim();
-                });
-            }
-            if (file.name.includes('procedimentos')) {
-                text.split('\n').slice(1).forEach(l => {
-                    const c = l.split(';');
-                    if (c[0] && c[1]) dicioUnid[c[0].trim().padStart(7, '0')] = c[1].trim();
-                    if (c[2] && c[3]) dicioProcs[c[2].trim().padStart(7, '0')] = c[3].trim();
-                });
-            }
-        }
-        if (dadosEscala.length > 0) renderTable();
-    };
 
     fileEscala.onchange = (e) => {
         const file = e.target.files[0];
@@ -175,13 +178,15 @@
 
             tr.innerHTML = `
                 <td>
-                    <span class="nome-exibicao">${dicioUnid[esc.ups] || 'Unidade'}</span>
-                    <input type="text" value="${esc.ups}" onchange="update(${i}, 'ups', this.value)" style="width:60px; font-weight:bold">
-                    <input type="text" value="${esc.pa}" onchange="update(${i}, 'pa', this.value)" style="width:60px">
+                    <span class="nome-exibicao" title="${dicioUnid[esc.ups] || ''}">${dicioUnid[esc.ups] || 'Unidade não encontrada'}</span>
+                    <div style="display:flex; gap:2px">
+                        <input type="text" value="${esc.ups}" onchange="update(${i}, 'ups', this.value)" style="width:55px; font-weight:bold" title="CNES">
+                        <input type="text" value="${esc.pa}" onchange="update(${i}, 'pa', this.value)" style="width:55px" title="Cód. Procedimento">
+                    </div>
                     <small class="info-label">${dicioProcs[esc.pa] || ''}</small>
                 </td>
                 <td>
-                    <span class="nome-exibicao">${dicioProf[esc.cpf] || 'Profissional'}</span>
+                    <span class="nome-exibicao">${dicioProf[esc.cpf] || 'Profissional não encontrado'}</span>
                     <input type="text" value="${esc.cpf}" onchange="update(${i}, 'cpf', this.value)">
                 </td>
                 <td>
@@ -205,7 +210,7 @@
                 </td>
                 <td>
                     <input type="text" value="${esc.sub}" onchange="update(${i}, 'sub', this.value)" placeholder="Subitens">
-                    <input type="text" value="${esc.obs}" onchange="update(${i}, 'obs', this.value)" placeholder="OBS">
+                    <input type="text" value="${esc.obs}" onchange="update(${i}, 'obs', this.value)" placeholder="Observação">
                 </td>
             `;
             tbody.appendChild(tr);
@@ -216,7 +221,7 @@
     }
 
     window.update = (idx, campo, valor) => {
-        if (['ups', 'pa', 'sub'].includes(campo)) valor = valor.padStart(7, '0');
+        if (['ups', 'pa'].includes(campo)) valor = valor.padStart(7, '0');
         if (campo === 'cpf') valor = valor.padStart(11, '0');
         dadosEscala[idx][campo] = valor;
         if (['ups', 'pa', 'cpf'].includes(campo)) renderTable(); 
@@ -240,6 +245,8 @@
         link.download = `REVISADO_${document.getElementById('statusEscala').textContent || 'escala.csv'}`;
         link.click();
     };
+
+    document.addEventListener('DOMContentLoaded', carregarBasesLocais);
 </script>
 </body>
 </html>

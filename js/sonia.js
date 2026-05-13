@@ -1,18 +1,14 @@
 const DB = {
-    unidades: [],
-    procedimentos: [],
-    profissionais: [],
-    exames: [],
-    gruposExames: [],
-    valoresExames: {},
-    procedimentosPorUnidade: {}, // Estrutura: { CNES: { procedimentos: Set, subitens: Set } }
+    unidades: [], // { cnes, nome }
+    masterData: {}, // { CNES: { nome, procedimentos: { cod: { nome, tipo, regulado, subitens: [], valor } } } }
+    profissionais: []
 };
 
 const AppState = {
     config: { unidadeCnes: null, unidadeNome: null, competencia: null },
     escalas: [],
     examesSelecionadosTemp: [],
-    grupoAtivo: null,
+    procedimentoAtivo: null,
     todosSelecionados: false,
     stringExamesHabilitados: null
 };
@@ -69,57 +65,55 @@ function switchScreen(screenName) {
 
 async function loadCSVData() {
     try {
-        const [u, p, pr, e, v, pu] = await Promise.all([
-            fetch('unidades.csv').then(r => r.text()),
-            fetch('procedimentos.csv').then(r => r.text()),
-            fetch('profissionais.csv').then(r => r.text()),
-            fetch('exames.csv').then(r => r.text()),
-            fetch('valoresExames.csv').then(r => r.text()).catch(() => ""),
-            fetch('procedimentos_unidades.csv').then(r => r.text())
+        const [pu, pr] = await Promise.all([
+            fetch('procedimentos_unidades.csv').then(r => r.text()),
+            fetch('profissionais.csv').then(r => r.text())
         ]);
 
-        DB.unidades = u.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
-            const parts = l.split(';');
-            return { cnes: parts[0]?.trim(), nome: parts[1]?.trim() };
-        });
+        // Processamento do Arquivo Mestre Unificado
+        const linhas = pu.split('\n').slice(1);
+        const unidadesMap = new Map();
 
-        // MAPEAMENTO CORRIGIDO PARA CSV COM CÉLULAS VAZIAS
-        let ultimoCnesLido = "";
-        const linhasPermissoes = pu.split('\n').slice(1);
-        
-        linhasPermissoes.forEach(linha => {
+        linhas.forEach(linha => {
             if (!linha.trim()) return;
-            const colunas = linha.split(';');
-            
-            // Se a primeira coluna tem valor, atualiza o CNES de referência
-            if (colunas[0] && colunas[0].trim() !== "") {
-                ultimoCnesLido = colunas[0].trim();
+            const col = linha.split(';');
+            const cnes = col[0]?.trim();
+            const unidadeNome = col[1]?.trim();
+            const codProc = col[2]?.trim();
+            const descProc = col[3]?.trim();
+            const codSub = col[4]?.trim();
+            const descSub = col[5]?.trim();
+            const tipo = col[6]?.trim().toUpperCase();
+            const regulado = col[7]?.trim().toLowerCase() === 'sim';
+            const valor = parseFloat(col[8]?.replace(',', '.')) || 0;
+
+            if (!cnes || !codProc) return;
+
+            if (!DB.masterData[cnes]) {
+                DB.masterData[cnes] = { nome: unidadeNome, procedimentos: {} };
+                unidadesMap.set(cnes, unidadeNome);
             }
 
-            if (ultimoCnesLido) {
-                if (!DB.procedimentosPorUnidade[ultimoCnesLido]) {
-                    DB.procedimentosPorUnidade[ultimoCnesLido] = { procedimentos: new Set(), subitens: new Set() };
-                }
-                
-                // Pega o código do procedimento (Coluna C / Índice 2)
-                const codProc = colunas[2] ? colunas[2].trim() : "";
-                if (codProc) DB.procedimentosPorUnidade[ultimoCnesLido].procedimentos.add(codProc);
-                
-                // Pega o código do sub-item (Coluna E / Índice 4)
-                const codSub = colunas[4] ? colunas[4].trim() : "";
-                if (codSub) DB.procedimentosPorUnidade[ultimoCnesLido].subitens.add(codSub);
+            if (!DB.masterData[cnes].procedimentos[codProc]) {
+                DB.masterData[cnes].procedimentos[codProc] = {
+                    codigo: codProc,
+                    nome: descProc,
+                    tipo: tipo,
+                    regulado: regulado,
+                    valor: valor,
+                    subitens: []
+                };
+            }
+
+            if (codSub) {
+                DB.masterData[cnes].procedimentos[codProc].subitens.push({
+                    codigo: codSub,
+                    nome: descSub
+                });
             }
         });
 
-        DB.procedimentos = p.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
-            const parts = l.split(';');
-            const cod = parts[0]?.trim();
-            const nomeRaw = parts[1]?.trim() || "";
-            const nome = nomeRaw.replace(/"/g, '');
-            const tipo = parts[2]?.trim().toUpperCase() || ""; 
-            const regulado = parts[3]?.trim().toLowerCase() === 'sim';
-            return { codigo: cod, nome: nome, tipo: tipo, isRegulado: regulado, isRetorno: nome.includes('RETORNO') };
-        });
+        DB.unidades = Array.from(unidadesMap).map(([cnes, nome]) => ({ cnes, nome }));
 
         DB.profissionais = pr.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
             const parts = l.split(';');
@@ -131,48 +125,11 @@ async function loadCSVData() {
             };
         });
 
-        if (v) {
-            v.split('\n').slice(1).forEach(l => {
-                const parts = l.split(';');
-                if (parts.length >= 3) {
-                    const codMatch = parts[0].match(/\((\d+)\)/);
-                    if (codMatch) {
-                        const cod = codMatch[1].padStart(7, '0');
-                        DB.valoresExames[cod] = parseFloat(parts[2].trim().replace(',', '.')) || 0;
-                    }
-                }
-            });
-        }
-
-        const linhasExames = e.split('\n').filter(l => l.trim());
-        if (linhasExames.length > 0) {
-            const cabecalho = linhasExames[0].split(';');
-            cabecalho.forEach((col, index) => {
-                const match = col.match(/\((\d+)\)/);
-                if (match) {
-                    DB.gruposExames.push({ codigo: match[1], nome: col, index: index });
-                }
-            });
-
-            linhasExames.slice(1).forEach(linha => {
-                const colunas = linha.split(';');
-                colunas.forEach((conteudo, idx) => {
-                    const desc = conteudo.trim();
-                    if (desc) {
-                        const matchExame = desc.match(/\((\d+)\)/);
-                        if (matchExame) {
-                            DB.exames.push({ codigo: matchExame[1], nome: desc, colIndex: idx });
-                        }
-                    }
-                });
-            });
-        }
-
         els.btnIniciar.textContent = "Iniciar Nova Escala";
         checkSession();
     } catch (err) {
-        console.error("Erro CSV:", err);
-        els.btnIniciar.textContent = "Erro ao carregar arquivos";
+        console.error("Erro ao carregar dados:", err);
+        els.btnIniciar.textContent = "Erro nos arquivos";
     }
 }
 
@@ -192,20 +149,14 @@ function calculateEndTime(startTime, minutes, vagas, aplicaRegraFinanceiro) {
     const [h, m] = startTime.split(':').map(Number);
     const date = new Date();
     date.setHours(h, m, 0, 0);
-    
-    if (aplicaRegraFinanceiro) {
-        date.setMinutes(date.getMinutes() + 5);
-    } else {
+    if (aplicaRegraFinanceiro) date.setMinutes(date.getMinutes() + 5);
+    else {
         if (!minutes || !vagas) return "";
         date.setMinutes(date.getMinutes() + (minutes * vagas));
     }
-
     let currentMin = date.getMinutes();
     let remainder = currentMin % 5;
-    if (remainder !== 0) {
-        date.setMinutes(currentMin + (5 - remainder));
-    }
-
+    if (remainder !== 0) date.setMinutes(currentMin + (5 - remainder));
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
@@ -235,7 +186,6 @@ function setupAutocomplete(inputEl, listEl, dataOrFunction, displayKey, valueKey
             });
         } else { listEl.style.display = 'none'; }
     });
-    document.addEventListener('click', (e) => { if (e.target !== inputEl) listEl.style.display = 'none'; });
 }
 
 function initAutocompletes() {
@@ -253,23 +203,17 @@ function initAutocompletes() {
 
     setupAutocomplete(els.inputProcedimento, els.listProcedimentos, () => {
         const cnes = AppState.config.unidadeCnes;
-        const regras = DB.procedimentosPorUnidade[cnes];
-        if (!regras) return [];
-        return DB.procedimentos.filter(p => {
-            // Compara os códigos de procedimento removendo possíveis pontos ou espaços
-            const codLimpo = p.codigo.replace(/\./g, '').trim();
-            return Array.from(regras.procedimentos).some(perm => perm.replace(/\./g, '').trim() === codLimpo);
-        });
+        if (!DB.masterData[cnes]) return [];
+        return Object.values(DB.masterData[cnes].procedimentos);
     }, 'nome', 'codigo', (item) => {
+        AppState.procedimentoAtivo = item;
         els.hiddenCodProcedimento.value = item.codigo;
-        els.hiddenIsRegulado.value = item.isRegulado;
-        els.hiddenIsRetorno.value = item.isRetorno;
+        els.hiddenIsRegulado.value = item.regulado;
+        els.hiddenIsRetorno.value = item.nome.includes('RETORNO');
         
-        if (item.isRetorno) {
-            els.tipoAgenda.value = "1";
-        }
+        if (els.hiddenIsRetorno.value === 'true') els.tipoAgenda.value = "1";
 
-        if (item.tipo && item.tipo.includes('FINANCEIRO')) {
+        if (item.tipo === 'FINANCEIRO') {
             els.tipoEscala.value = "0";
             els.tipoEscala.disabled = true;
             els.numMinutos.value = 1;
@@ -278,14 +222,9 @@ function initAutocompletes() {
             els.tipoEscala.disabled = false;
         }
 
-        const codigoFormatado = item.codigo.padStart(7, '0');
-        const grupo = DB.gruposExames.find(g => g.codigo.padStart(7, '0') === codigoFormatado);
-
-        if (grupo) {
-            AppState.grupoAtivo = grupo.index;
+        if (item.subitens && item.subitens.length > 0) {
             els.rowExames.style.display = 'block';
         } else {
-            AppState.grupoAtivo = null;
             els.rowExames.style.display = 'none';
             AppState.examesSelecionadosTemp = [];
             AppState.todosSelecionados = false;
@@ -293,7 +232,6 @@ function initAutocompletes() {
         }
     });
 
-    els.horaInicio.setAttribute('step', '300'); 
     els.horaInicio.addEventListener('blur', function() {
         if (!this.value) return;
         let [h, m] = this.value.split(':').map(Number);
@@ -307,21 +245,7 @@ function initAutocompletes() {
 }
 
 els.btnAbrirExames.onclick = () => {
-    if (AppState.grupoAtivo === null) return;
-    const cnes = AppState.config.unidadeCnes;
-    const regras = DB.procedimentosPorUnidade[cnes];
-    
-    const examesDoGrupo = DB.exames.filter(ex => {
-        const pertenceAoGrupo = ex.colIndex === AppState.grupoAtivo;
-        const codExLimpo = ex.codigo.replace(/\./g, '').trim();
-        const estaPermitido = regras && Array.from(regras.subitens).some(perm => perm.replace(/\./g, '').trim() === codExLimpo);
-        return pertenceAoGrupo && estaPermitido;
-    });
-
-    if (examesDoGrupo.length === 0) {
-        alert("Atenção: Nenhum exame deste grupo está habilitado para sua unidade no cadastro.");
-        return;
-    }
+    if (!AppState.procedimentoAtivo || !AppState.procedimentoAtivo.subitens) return;
     
     els.modalCorpo.innerHTML = `
         <label style="background: #eff6ff; font-weight: bold; border-bottom: 1px solid #dbeafe; margin-bottom: 10px;">
@@ -329,18 +253,16 @@ els.btnAbrirExames.onclick = () => {
         </label>
     `;
     
-    examesDoGrupo.forEach(ex => {
+    AppState.procedimentoAtivo.subitens.forEach(ex => {
         const isChecked = AppState.examesSelecionadosTemp.some(s => s.codigo === ex.codigo);
         const label = document.createElement('label');
         label.innerHTML = `<input type="checkbox" class="check-exame-item" value="${ex.codigo}" data-nome="${ex.nome}" ${isChecked ? 'checked' : ''}> ${ex.nome}`;
         els.modalCorpo.appendChild(label);
     });
 
-    const checkTodos = document.getElementById('checkTodosExames');
-    checkTodos.onchange = (e) => {
+    document.getElementById('checkTodosExames').onchange = (e) => {
         document.querySelectorAll('.check-exame-item').forEach(cb => cb.checked = e.target.checked);
     };
-
     els.modalExames.style.display = 'flex';
 };
 
@@ -363,7 +285,6 @@ window.confirmarSelecaoExames = () => {
         AppState.examesSelecionadosTemp = selecionados;
         AppState.stringExamesHabilitados = null;
     }
-    
     renderExameTags();
     fecharModalExames();
 };
@@ -380,22 +301,9 @@ function renderExameTags() {
 
 window.removeExameTag = (codigo) => {
     AppState.examesSelecionadosTemp = AppState.examesSelecionadosTemp.filter(e => e.codigo !== codigo);
-    if (codigo === "HABILITADOS") {
-        AppState.todosSelecionados = false;
-        AppState.stringExamesHabilitados = null;
-    }
+    if (codigo === "HABILITADOS") { AppState.todosSelecionados = false; AppState.stringExamesHabilitados = null; }
     renderExameTags();
 };
-
-els.tipoEscala.addEventListener('change', (e) => {
-    if (e.target.value === "0") {
-        els.numMinutos.value = 1;
-        els.numMinutos.readOnly = true;
-    } else {
-        els.numMinutos.readOnly = false;
-        els.numMinutos.value = "";
-    }
-});
 
 els.formConfig.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -409,107 +317,43 @@ els.formConfig.addEventListener('submit', (e) => {
 
 els.btnVoltar.onclick = () => { if(confirm("Sair e trocar unidade?")) switchScreen('welcome'); };
 
-function checkLocalConflict(newCpf, newPa, newDays, newHIni, newHFim) {
-    const hIniNum = parseInt(newHIni.replace(':', ''));
-    const hFimNum = parseInt(newHFim.replace(':', ''));
-
-    return AppState.escalas.some(escala => {
-        if (escala.cpf === newCpf && escala.pa === newPa) {
-            const diasEscala = escala.dias.split(' ');
-            const temDiaComum = newDays.some(d => diasEscala.includes(d));
-
-            if (temDiaComum) {
-                const exHIniNum = parseInt(escala.hIni.replace(':', ''));
-                const exHFimNum = parseInt(escala.hFim.replace(':', ''));
-                return (hIniNum < exHFimNum && hFimNum > exHIniNum);
-            }
-        }
-        return false;
-    });
-}
-
 els.formEscala.addEventListener('submit', (e) => {
     e.preventDefault();
 
     const vIniInput = document.getElementById('vigenciaInicio').value;
     const vFimInput = document.getElementById('vigenciaFim').value;
-    
-    if (vIniInput && vFimInput) {
-        const dIni = new Date(vIniInput);
-        const dFim = new Date(vFimInput);
-        if (dFim < dIni) {
-            alert(`ERRO DE VIGÊNCIA: A data final (${vFimInput.split('-').reverse().join('/')}) não pode ser anterior à data inicial (${vIniInput.split('-').reverse().join('/')}).`);
-            document.getElementById('vigenciaFim').focus();
-            return;
-        }
-    }
-
-    const cpfInformado = els.hiddenCpfProfissional.value;
-    const profissionalValido = DB.profissionais.find(p => 
-        p.cpf === cpfInformado && 
-        p.unidadeNome === AppState.config.unidadeNome && 
-        p.status === "ATIVO"
-    );
-
-    if (!profissionalValido || !els.inputProfissional.value.includes(cpfInformado)) {
-        alert("Erro: Selecione um Profissional da lista de sugestões.");
-        els.inputProfissional.focus();
+    if (vIniInput && vFimInput && new Date(vFimInput) < new Date(vIniInput)) {
+        alert("Erro: Vigência Final menor que a Inicial.");
         return;
     }
 
+    const cpf = els.hiddenCpfProfissional.value;
+    const proc = AppState.procedimentoAtivo;
     const dias = Array.from(document.querySelectorAll('input[name="dias"]:checked')).map(cb => cb.value);
-    if(dias.length === 0) return alert("Selecione ao menos um dia.");
-    
+    if(dias.length === 0) return alert("Selecione os dias.");
+
     const vagas = parseInt(els.numVagas.value);
-    const minutes = parseInt(els.numMinutos.value);
-    const procCod = els.hiddenCodProcedimento.value;
+    const hFim = calculateEndTime(els.horaInicio.value, parseInt(els.numMinutos.value), vagas, proc.tipo === 'FINANCEIRO');
 
-    const proc = DB.procedimentos.find(p => p.codigo === procCod);
-    const isExameHabilitado = els.rowExames.style.display === 'block';
-    const isFinanceiro = proc && proc.tipo && proc.tipo.includes('FINANCEIRO');
-    const aplicaRegraFinanceiro = isExameHabilitado && isFinanceiro;
-
-    const hFim = calculateEndTime(els.horaInicio.value, minutes, vagas, aplicaRegraFinanceiro);
-
-    if (checkLocalConflict(cpfInformado, procCod, dias, els.horaInicio.value, hFim)) {
-        alert(`ALERTA DE CONFLITO: O profissional ${profissionalValido.nome} já possui uma escala para este procedimento no mesmo dia e horário. Verifique a tabela abaixo.`);
-        return;
-    }
-
-    let vagasParaCsv = vagas;
-    if (aplicaRegraFinanceiro) {
-        const codP = procCod.padStart(7, '0');
-        const valor = DB.valoresExames[codP] || 0;
-        vagasParaCsv = vagas * valor;
-    }
-
-    let examesString = "";
-    if (AppState.todosSelecionados && AppState.stringExamesHabilitados) {
-        examesString = AppState.stringExamesHabilitados;
-    } else {
-        examesString = AppState.examesSelecionadosTemp.map(x => x.codigo).join(' ');
-    }
-
+    let examesCSV = Appstate.todosSelecionados ? AppState.stringExamesHabilitados : AppState.examesSelecionadosTemp.map(x => x.codigo).join(' ');
+    
     const linha = {
         ups: AppState.config.unidadeCnes,
-        pa: procCod,
-        procedimento: els.inputProcedimento.value.split(' - ')[1] || els.inputProcedimento.value,
-        cpf: cpfInformado,
-        profissional: profissionalValido.nome,
+        pa: proc.codigo,
+        procedimento: proc.nome,
+        cpf: cpf,
+        profissional: els.inputProfissional.value.split(' - ')[1],
         dias: dias.join(' '),
-        horario: `${els.horaInicio.value} às ${hFim}`,
         hIni: els.horaInicio.value,
         hFim: hFim,
         vagas: vagas,
-        vagasCSV: vagasParaCsv, 
-        isRegulado: els.hiddenIsRegulado.value === 'true', 
-        isRetorno: els.hiddenIsRetorno.value === 'true',   
-        escala: els.tipoEscala.value === '0' ? 'Chegada' : 'Agendado',
+        vagasCSV: proc.tipo === 'FINANCEIRO' ? (vagas * proc.valor) : vagas,
+        isRegulado: proc.regulado,
+        isRetorno: proc.nome.includes('RETORNO'),
         st_quebra: els.tipoEscala.value,
-        minutos: minutes,
-        agenda: els.tipoAgenda.value === '0' ? 'Rede' : 'Local',
         tp_agenda: els.tipoAgenda.value,
-        exames: examesString,
+        minutos: els.numMinutos.value,
+        exames: examesCSV,
         vini: vIniInput.split('-').reverse().join('/'),
         vfim: vFimInput.split('-').reverse().join('/')
     };
@@ -519,47 +363,38 @@ els.formEscala.addEventListener('submit', (e) => {
     renderTable();
     els.formEscala.reset();
     AppState.examesSelecionadosTemp = [];
-    AppState.grupoAtivo = null;
-    AppState.todosSelecionados = false;
-    AppState.stringExamesHabilitados = null;
+    AppState.procedimentoAtivo = null;
     els.rowExames.style.display = 'none';
     renderExameTags();
-    els.hiddenCpfProfissional.value = ""; 
 });
 
 function renderTable() {
     els.tabelaBody.innerHTML = '';
     AppState.escalas.forEach((l, i) => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${l.pa}<br><small>${l.procedimento}</small></td><td>${l.cpf}<br><small>${l.profissional}</small></td><td>${l.dias}</td><td>${l.horario}</td><td>${l.vagas}</td><td>${l.escala}</td><td>${l.minutos}</td><td>${l.agenda}</td><td>${l.exames || '-'}</td><td><button class="btn-trash" onclick="deleteLinha(${i})">🗑️</button></td>`;
+        tr.innerHTML = `<td>${l.pa}</td><td>${l.profissional}</td><td>${l.dias}</td><td>${l.hIni}-${l.hFim}</td><td>${l.vagas}</td><td>${l.st_quebra == '0' ? 'Ch' : 'Ag'}</td><td>${l.minutos}</td><td>${l.tp_agenda == '0' ? 'Rede' : 'Loc'}</td><td>${l.exames || '-'}</td><td><button onclick="deleteLinha(${i})">🗑️</button></td>`;
         els.tabelaBody.appendChild(tr);
     });
 }
 
 window.deleteLinha = (i) => { AppState.escalas.splice(i, 1); localStorage.setItem('SONIA_DATA', JSON.stringify(AppState.escalas)); renderTable(); };
-
-els.btnLimpar.onclick = () => { if(confirm("Limpar tudo?")) { AppState.escalas = []; localStorage.removeItem('SONIA_DATA'); renderTable(); } };
+els.btnLimpar.onclick = () => { if(confirm("Limpar?")) { AppState.escalas = []; localStorage.removeItem('SONIA_DATA'); renderTable(); } };
 
 els.btnExportar.onclick = () => {
-    if (AppState.escalas.length === 0) return alert("Tabela vazia.");
+    if (AppState.escalas.length === 0) return;
     let csv = "ups;pa;cpf;st_vigencia;dt_vigencia_inicial;dt_vigencia_final;st_quebra;tp_agenda;st_ativo;dia;hora_inicial;hora_final;fichas;fichas_min;retornos;retornos_min;reservas;reservas_min;v_pa_item;ds_observacao\n";
     AppState.escalas.forEach(l => {
-        const vCsv = l.vagasCSV !== undefined ? l.vagasCSV : l.vagas;
-        let fichas = 0, fichasMin = 0, retornos = 0, retornosMin = 0, reservas = 0, reservasMin = 0;
-        if (l.isRegulado) { reservas = vCsv; reservasMin = l.minutos; }
-        else if (l.tp_agenda === "1" || l.isRetorno) { retornos = vCsv; retornosMin = l.minutos; }
-        else { fichas = vCsv; fichasMin = l.minutos; }
-        csv += `${l.ups};${l.pa};${l.cpf};1;${l.vini};${l.vfim};${l.st_quebra};${l.tp_agenda};1;${l.dias};${l.hIni};${l.hFim};${fichas};${fichasMin};${retornos};${retornosMin};${reservas};${reservasMin};${l.exames};ESCALAS_${AppState.config.competencia}_2026\n`;
+        let f=0, fm=0, rt=0, rtm=0, rs=0, rsm=0;
+        if (l.isRegulado) { rs=l.vagasCSV; rsm=l.minutos; }
+        else if (l.tp_agenda === "1" || l.isRetorno) { rt=l.vagasCSV; rtm=l.minutos; }
+        else { f=l.vagasCSV; fm=l.minutos; }
+        csv += `${l.ups};${l.pa};${l.cpf};1;${l.vini};${l.vfim};${l.st_quebra};${l.tp_agenda};1;${l.dias};${l.hIni};${l.hFim};${f};${fm};${rt};${rtm};${rs};${rsm};${l.exames};SONIA_${AppState.config.competencia}\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `ESCALAS_${AppState.config.unidadeNome}_${AppState.config.competencia}.csv`;
+    link.download = `ESCALAS_${AppState.config.unidadeNome}.csv`;
     link.click();
-    AppState.escalas = [];
-    localStorage.removeItem('SONIA_DATA');
-    renderTable();
-    alert("Escalas exportadas com sucesso! A tabela foi limpa.");
 };
 
 document.addEventListener('DOMContentLoaded', () => {

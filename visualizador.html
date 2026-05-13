@@ -6,7 +6,7 @@
     <title>Editor de Escalas CSV - SONIA</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        :root { --primary: #27ae60; --danger: #e74c3c; --bg: #f8fafc; --text: #1e293b; --border: #e2e8f0; }
+        :root { --primary: #27ae60; --danger: #e74c3c; --bg: #f8fafc; --text: #1e293b; --border: #e2e8f0; --warning: #f39c12; }
         body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; }
         .container { max-width: 100%; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
         
@@ -41,8 +41,8 @@
         .tag-rede { background-color: var(--primary); }
         .tag-local { background-color: var(--danger); }
         
-        .msg-erro { color: var(--danger); font-size: 0.6rem; font-weight: bold; display: block; margin-top: 2px; }
-        .linha-id { font-weight: bold; color: #64748b; text-align: center; }
+        .msg-erro { color: var(--danger); font-size: 0.6rem; font-weight: bold; display: block; margin-top: 2px; line-height: 1.1; }
+        .linha-id { font-weight: bold; color: #64748b; text-align: center; font-size: 0.8rem; }
     </style>
 </head>
 <body>
@@ -64,28 +64,30 @@
     <div class="actions">
         <button class="btn-export" id="btnExportar">📥 Exportar Novo CSV</button>
         <div style="font-size: 0.8rem; margin-left: auto;">
-            Linhas: <b id="totalLinhas">0</b> | Conflitos/Alertas: <b id="totalConflitos" style="color:red">0</b>
+            Linhas: <b id="totalLinhas">0</b> | Alertas: <b id="totalConflitos" style="color:red">0</b>
         </div>
     </div>
 
     <div style="overflow-x: auto; max-height: 600px;">
         <table id="tabelaDados">
             <colgroup>
-                <col style="width: 40px;">
+                <col style="width: 35px;">
+                <col style="width: 100px;">
                 <col style="width: 180px;">
                 <col style="width: 180px;">
                 <col style="width: 90px;">
                 <col style="width: 100px;">
                 <col style="width: 60px;">
                 <col style="width: 60px;">
-                <col style="width: 120px;">
-                <col style="width: 60px;">
+                <col style="width: 110px;">
+                <col style="width: 55px;">
                 <col style="width: 85px;">
-                <col style="width: 120px;">
+                <col style="width: 100px;">
             </colgroup>
             <thead>
                 <tr>
                     <th>#</th>
+                    <th>Motivo Alerta</th>
                     <th>Procedimento</th>
                     <th>Profissional (CPF)</th>
                     <th>Vigência</th>
@@ -126,6 +128,12 @@
         } catch (e) {
             document.getElementById('statusDb').textContent = "⚠️ Erro ao carregar referências locais.";
         }
+    }
+
+    function timeToMins(t) {
+        if (!t || !t.includes(':')) return 0;
+        const [h, m] = t.split(':').map(Number);
+        return (h * 60) + m;
     }
 
     document.getElementById('dropZoneEscala').onclick = () => document.getElementById('fileEscala').click();
@@ -171,24 +179,42 @@
     function renderTable() {
         const tbody = document.querySelector('#tabelaDados tbody');
         tbody.innerHTML = '';
-        let alertas = 0;
+        let totalAlertas = 0;
 
         dadosEscala.forEach((esc, i) => {
-            const isDuplicado = dadosEscala.some((p, idx) => 
+            let motivos = [];
+            
+            // 1. Verificar Duplicidade Exata
+            const duplicado = dadosEscala.some((p, idx) => 
                 idx !== i && p.cpf === esc.cpf && p.pa === esc.pa && p.dia === esc.dia && p.hini === esc.hini && p.vini === esc.vini
             );
-            const erroRetornoRede = (esc.tipo === 'T' && esc.agenda === '0');
-            const temConflito = isDuplicado || erroRetornoRede;
-            
-            if (temConflito) alertas++;
+            if (duplicado) motivos.push("⚠️ Duplicidade");
+
+            // 2. Verificar Choque de Horário (Mesmo CPF, Mesmo Dia, Horários sobrepostos)
+            const tIni = timeToMins(esc.hini);
+            const tFim = timeToMins(esc.hfim);
+            const choque = dadosEscala.some((p, idx) => {
+                if (idx === i || p.cpf !== esc.cpf || p.dia !== esc.dia || p.vini !== esc.vini) return false;
+                const pIni = timeToMins(p.hini);
+                const pFim = timeToMins(p.hfim);
+                return (tIni < pFim && pIni < tFim);
+            });
+            if (choque && !duplicado) motivos.push("⚠️ Choque de Horário");
+
+            // 3. Verificar Retorno na Agenda REDE
+            const erroRetorno = (esc.tipo === 'T' && esc.agenda === '0');
+            if (erroRetorno) motivos.push("⚠️ Retorno na REDE");
+
+            if (motivos.length > 0) totalAlertas++;
 
             const tr = document.createElement('tr');
-            if (temConflito) tr.className = 'conflito';
+            if (motivos.length > 0) tr.className = 'conflito';
 
             tr.innerHTML = `
                 <td class="linha-id">${i + 1}</td>
+                <td>${motivos.map(m => `<span class="msg-erro">${m}</span>`).join('')}</td>
                 <td>
-                    <span style="font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${dicioProcs[esc.pa] || '---'}</span>
+                    <span style="font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${dicioProcs[esc.pa] || ''}">${dicioProcs[esc.pa] || '---'}</span>
                     <input type="text" value="${esc.pa}" onchange="upd(${i},'pa',this.value.padStart(7,'0'))" style="width:60px; font-weight:bold">
                 </td>
                 <td>
@@ -217,7 +243,6 @@
                         <option value="0" ${esc.agenda=='0'?'selected':''}>REDE</option>
                         <option value="1" ${esc.agenda=='1'?'selected':''}>LOCAL</option>
                     </select>
-                    ${erroRetornoRede ? '<span class="msg-erro">⚠️ MUDAR P/ LOCAL</span>' : ''}
                 </td>
                 <td>
                     <input type="text" value="${esc.sub}" onchange="upd(${i},'sub',this.value)" placeholder="Sub" style="font-size:0.65rem">
@@ -227,12 +252,12 @@
             tbody.appendChild(tr);
         });
         document.getElementById('totalLinhas').textContent = dadosEscala.length;
-        document.getElementById('totalConflitos').textContent = alertas;
+        document.getElementById('totalConflitos').textContent = totalAlertas;
     }
 
     window.upd = (i, f, v) => { 
         dadosEscala[i][f] = v; 
-        if(['pa','cpf','tipo','agenda'].includes(f)) renderTable(); 
+        if(['pa','cpf','tipo','agenda','hini','hfim','dia'].includes(f)) renderTable(); 
     };
 
     document.getElementById('btnExportar').onclick = () => {

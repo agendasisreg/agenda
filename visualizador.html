@@ -72,7 +72,7 @@
                     <th style="width: 110px;">Alertas / Ação</th>
                     <th style="width: 180px;">Procedimento</th>
                     <th style="width: 180px;">Profissional (CPF)</th>
-                    <th style="width: 80px;">Vigência</th>
+                    <th style="width: 130px;">Vigência (Início - Fim)</th>
                     <th style="width: 100px;">Dias</th>
                     <th style="width: 60px;">Início</th>
                     <th style="width: 60px;">Fim</th>
@@ -107,7 +107,6 @@
                 if (c[2] && c[3]) {
                     const codProc = c[2].trim().padStart(7, '0');
                     dicioProcs[codProc] = c[3].trim();
-                    // Coluna 6 (índice 6) contém o tipo FISICO ou FINANCEIRO
                     dicioTipoProc[codProc] = c[6] ? c[6].trim().toUpperCase() : 'FISICO';
                 }
             });
@@ -172,16 +171,22 @@
 
         dadosEscala.forEach((esc, i) => {
             let conflitos = [];
+            
+            // REGRA CORRIGIDA: Só há conflito se for MESMO CPF + MESMO PROCEDIMENTO (PA)
             const refIdx = dadosEscala.findIndex((p, idx) => 
-                idx < i && p.cpf === esc.cpf && p.dia === esc.dia && p.vini === esc.vini &&
-                (t2m(esc.hini) < t2m(p.hfim) && t2m(p.hini) < t2m(esc.hfim))
+                idx < i && 
+                p.pa === esc.pa && // Deve ser o mesmo procedimento
+                p.cpf === esc.cpf && // Deve ser o mesmo médico
+                p.dia === esc.dia && 
+                p.vini === esc.vini && // Mesma vigência
+                (t2m(esc.hini) < t2m(p.hfim) && t2m(p.hini) < t2m(esc.hfim)) // Cruzamento de horário
             );
 
             if (refIdx !== -1) {
                 const r = dadosEscala[refIdx];
-                const isDupe = (r.pa === esc.pa && r.hini === esc.hini && r.hfim === esc.hfim && 
+                const isDupe = (r.hini === esc.hini && r.hfim === esc.hfim && 
                                 r.valorVaga === esc.valorVaga && r.mins === esc.mins && 
-                                r.agenda === esc.agenda && r.sub === esc.sub);
+                                r.agenda === esc.agenda);
                 
                 if (isDupe) {
                     conflitos.push({ tipo: 'DUPLICIDADE', msg: "⚠️ Duplicidade Real", ref: refIdx });
@@ -218,7 +223,10 @@
                     <span style="font-weight:600; display:block">${dicioProf[esc.cpf] || '---'}</span>
                     <input type="text" value="${esc.cpf}" onchange="upd(${i},'cpf',this.value.padStart(11,'0'))">
                 </td>
-                <td><input type="text" value="${esc.vini}" onchange="upd(${i},'vini',this.value)" style="font-size:0.65rem"></td>
+                <td style="display:flex; gap:2px">
+                    <input type="text" value="${esc.vini}" onchange="upd(${i},'vini',this.value)" style="font-size:0.65rem; width:50%">
+                    <input type="text" value="${esc.vfim}" onchange="upd(${i},'vfim',this.value)" style="font-size:0.65rem; width:50%">
+                </td>
                 <td><input type="text" value="${esc.dia}" onchange="upd(${i},'dia',this.value)"></td>
                 <td><input type="text" value="${esc.hini}" onchange="upd(${i},'hini',this.value)"></td>
                 <td><input type="text" value="${esc.hfim}" onchange="upd(${i},'hfim',this.value)"></td>
@@ -248,16 +256,11 @@
 
     function calcularHoraFinal(esc) {
         const tipoProcedimento = dicioTipoProc[esc.pa] || 'FISICO';
-
-        // Regra para procedimentos financeiros ou marcações financeiras forçadas
         if (tipoProcedimento === 'FINANCEIRO' || (esc.sub && esc.sub.startsWith('FIN'))) { 
              return m2t(t2m(esc.hini) + 5);
         }
-        
-        // Regra FÍSICO: Vagas * Minutos arredondado para o próximo múltiplo de 5 min
         const totalMins = parseInt(esc.valorVaga || 0) * parseInt(esc.mins || 0);
-        if (totalMins === 0) return m2t(t2m(esc.hini) + 5); // Fallback de segurança
-        
+        if (totalMins === 0) return m2t(t2m(esc.hini) + 5); 
         return m2t(round5(t2m(esc.hini) + totalMins));
     }
 
@@ -281,13 +284,10 @@
 
     window.upd = (i, f, v) => { 
         dadosEscala[i][f] = v; 
-        
-        // Se alterar a hora inicial, vagas, minutos ou procedimento, recalcula a hora final
         if(['hini', 'valorVaga', 'mins', 'pa'].includes(f)) {
             dadosEscala[i].hfim = calcularHoraFinal(dadosEscala[i]);
         }
-        
-        if(['pa','cpf','tipo','agenda','hini','hfim','dia','valorVaga','mins'].includes(f)) renderTable(); 
+        renderTable(); 
     };
 
     document.getElementById('btnExportar').onclick = () => {

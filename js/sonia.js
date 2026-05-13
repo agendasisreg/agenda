@@ -1,5 +1,5 @@
 const DB = {
-    unidades: [], // { cnes, nome }
+    unidades: [],
     masterData: {}, // { CNES: { nome, procedimentos: { cod: { nome, tipo, regulado, subitens: [], valor } } } }
     profissionais: []
 };
@@ -10,7 +10,8 @@ const AppState = {
     examesSelecionadosTemp: [],
     procedimentoAtivo: null,
     todosSelecionados: false,
-    stringExamesHabilitados: null
+    stringExamesHabilitados: null,
+    examesHabilitadosFull: []
 };
 
 const els = {
@@ -70,7 +71,6 @@ async function loadCSVData() {
             fetch('profissionais.csv').then(r => r.text())
         ]);
 
-        // Processamento do Arquivo Mestre Unificado
         const linhas = pu.split('\n').slice(1);
         const unidadesMap = new Map();
 
@@ -85,7 +85,7 @@ async function loadCSVData() {
             const descSub = col[5]?.trim();
             const tipo = col[6]?.trim().toUpperCase();
             const regulado = col[7]?.trim().toLowerCase() === 'sim';
-            const valor = parseFloat(col[8]?.replace(',', '.')) || 0;
+            const valor = parseFloat(col[8]?.toString().replace(',', '.')) || 0;
 
             if (!cnes || !codProc) return;
 
@@ -100,7 +100,7 @@ async function loadCSVData() {
                     nome: descProc,
                     tipo: tipo,
                     regulado: regulado,
-                    valor: valor,
+                    valorGeral: valor, 
                     subitens: []
                 };
             }
@@ -108,13 +108,13 @@ async function loadCSVData() {
             if (codSub) {
                 DB.masterData[cnes].procedimentos[codProc].subitens.push({
                     codigo: codSub,
-                    nome: descSub
+                    nome: descSub,
+                    valor: valor
                 });
             }
         });
 
         DB.unidades = Array.from(unidadesMap).map(([cnes, nome]) => ({ cnes, nome }));
-
         DB.profissionais = pr.split('\n').slice(1).map(l => l.trim()).filter(l => l).map(l => {
             const parts = l.split(';');
             return { 
@@ -170,7 +170,7 @@ function setupAutocomplete(inputEl, listEl, dataOrFunction, displayKey, valueKey
             const val = (item[valueKey] || "").toString().toUpperCase();
             const disp = (item[displayKey] || "").toString().toUpperCase();
             return val.includes(term) || disp.includes(term);
-        }).slice(0, 30);
+        }).slice(0, 15);
         if (filtered.length > 0) {
             listEl.style.display = 'block';
             filtered.forEach(item => {
@@ -209,9 +209,16 @@ function initAutocompletes() {
         AppState.procedimentoAtivo = item;
         els.hiddenCodProcedimento.value = item.codigo;
         els.hiddenIsRegulado.value = item.regulado;
-        els.hiddenIsRetorno.value = item.nome.includes('RETORNO');
         
-        if (els.hiddenIsRetorno.value === 'true') els.tipoAgenda.value = "1";
+        const isRetorno = item.nome.toUpperCase().includes('RETORNO');
+        els.hiddenIsRetorno.value = isRetorno;
+        
+        if (isRetorno) {
+            els.tipoAgenda.value = "1";
+            els.tipoAgenda.disabled = true;
+        } else {
+            els.tipoAgenda.disabled = false;
+        }
 
         if (item.tipo === 'FINANCEIRO') {
             els.tipoEscala.value = "0";
@@ -220,6 +227,7 @@ function initAutocompletes() {
             els.numMinutos.readOnly = true;
         } else {
             els.tipoEscala.disabled = false;
+            els.numMinutos.readOnly = false;
         }
 
         if (item.subitens && item.subitens.length > 0) {
@@ -229,6 +237,15 @@ function initAutocompletes() {
             AppState.examesSelecionadosTemp = [];
             AppState.todosSelecionados = false;
             renderExameTags();
+        }
+    });
+
+    els.tipoEscala.addEventListener('change', () => {
+        if (els.tipoEscala.value === "0") {
+            els.numMinutos.value = 1;
+            els.numMinutos.readOnly = true;
+        } else {
+            els.numMinutos.readOnly = false;
         }
     });
 
@@ -246,20 +263,17 @@ function initAutocompletes() {
 
 els.btnAbrirExames.onclick = () => {
     if (!AppState.procedimentoAtivo || !AppState.procedimentoAtivo.subitens) return;
-    
     els.modalCorpo.innerHTML = `
         <label style="background: #eff6ff; font-weight: bold; border-bottom: 1px solid #dbeafe; margin-bottom: 10px;">
             <input type="checkbox" id="checkTodosExames" ${AppState.todosSelecionados ? 'checked' : ''}> SELECIONAR TODOS HABILITADOS
         </label>
     `;
-    
     AppState.procedimentoAtivo.subitens.forEach(ex => {
         const isChecked = AppState.examesSelecionadosTemp.some(s => s.codigo === ex.codigo);
         const label = document.createElement('label');
-        label.innerHTML = `<input type="checkbox" class="check-exame-item" value="${ex.codigo}" data-nome="${ex.nome}" ${isChecked ? 'checked' : ''}> ${ex.nome}`;
+        label.innerHTML = `<input type="checkbox" class="check-exame-item" value="${ex.codigo}" data-nome="${ex.nome}" data-valor="${ex.valor}" ${isChecked ? 'checked' : ''}> ${ex.nome} (R$ ${ex.valor})`;
         els.modalCorpo.appendChild(label);
     });
-
     document.getElementById('checkTodosExames').onchange = (e) => {
         document.querySelectorAll('.check-exame-item').forEach(cb => cb.checked = e.target.checked);
     };
@@ -271,17 +285,19 @@ window.fecharModalExames = () => { els.modalExames.style.display = 'none'; };
 window.confirmarSelecaoExames = () => {
     const todos = document.getElementById('checkTodosExames').checked;
     AppState.todosSelecionados = todos;
-    
-    if (todos) {
-        const apenasHabilitados = [];
-        document.querySelectorAll('.check-exame-item').forEach(cb => { apenasHabilitados.push(cb.value); });
-        AppState.examesSelecionadosTemp = [{ codigo: "HABILITADOS", nome: "TODOS OS HABILITADOS DA UNIDADE" }];
-        AppState.stringExamesHabilitados = apenasHabilitados.join(' ');
-    } else {
-        const selecionados = [];
-        document.querySelectorAll('.check-exame-item:checked').forEach(cb => {
-            selecionados.push({ codigo: cb.value, nome: cb.getAttribute('data-nome') });
+    const selecionados = [];
+    document.querySelectorAll('.check-exame-item:checked').forEach(cb => {
+        selecionados.push({ 
+            codigo: cb.value, 
+            nome: cb.getAttribute('data-nome'),
+            valor: parseFloat(cb.getAttribute('data-valor'))
         });
+    });
+    if (todos) {
+        AppState.examesSelecionadosTemp = [{ codigo: "HABILITADOS", nome: "TODOS OS HABILITADOS", valor: 0 }];
+        AppState.stringExamesHabilitados = selecionados.map(s => s.codigo).join(' ');
+        AppState.examesHabilitadosFull = selecionados; 
+    } else {
         AppState.examesSelecionadosTemp = selecionados;
         AppState.stringExamesHabilitados = null;
     }
@@ -328,31 +344,64 @@ els.formEscala.addEventListener('submit', (e) => {
     }
 
     const cpf = els.hiddenCpfProfissional.value;
+    if (!cpf) return alert("Selecione um profissional.");
+
     const proc = AppState.procedimentoAtivo;
+    if (!proc) return alert("Selecione um procedimento.");
+
     const dias = Array.from(document.querySelectorAll('input[name="dias"]:checked')).map(cb => cb.value);
-    if(dias.length === 0) return alert("Selecione os dias.");
+    if(dias.length === 0) return alert("Selecione os dias da semana.");
 
     const vagas = parseInt(els.numVagas.value);
-    const hFim = calculateEndTime(els.horaInicio.value, parseInt(els.numMinutos.value), vagas, proc.tipo === 'FINANCEIRO');
+    if (!vagas || vagas <= 0) return alert("Informe a quantidade de vagas.");
 
-    let examesCSV = Appstate.todosSelecionados ? AppState.stringExamesHabilitados : AppState.examesSelecionadosTemp.map(x => x.codigo).join(' ');
+    const minutos = parseInt(els.numMinutos.value);
+    const hFim = calculateEndTime(els.horaInicio.value, minutos, vagas, proc.tipo === 'FINANCEIRO');
+
+    // LÓGICA DE CÁLCULO FINANCEIRO ATUALIZADA (GARANTIA DE AGENDAMENTO)
+    let vagasParaCSV = vagas;
+
+    if (proc.tipo === 'FINANCEIRO') {
+        const listaParaCalculo = AppState.todosSelecionados ? AppState.examesHabilitadosFull : AppState.examesSelecionadosTemp;
+        
+        if (listaParaCalculo.length > 0) {
+            const valores = listaParaCalculo.map(i => i.valor);
+            const soma = valores.reduce((a, b) => a + b, 0);
+            const media = soma / valores.length;
+            const maiorValorSubitem = Math.max(...valores);
+
+            const valorPropostoPelaMedia = vagas * media;
+            const valorMinimoNecessario = vagas * maiorValorSubitem;
+
+            // Se o montante gerado pela média não cobre o valor do mais caro multiplicados pelas vagas
+            if (valorPropostoPelaMedia < valorMinimoNecessario) {
+                vagasParaCSV = Math.ceil(valorMinimoNecessario);
+            } else {
+                vagasParaCSV = Math.ceil(valorPropostoPelaMedia);
+            }
+        } else {
+            vagasParaCSV = Math.ceil(vagas * proc.valorGeral);
+        }
+    }
+
+    let examesCSV = AppState.todosSelecionados ? AppState.stringExamesHabilitados : AppState.examesSelecionadosTemp.map(x => x.codigo).join(' ');
     
     const linha = {
         ups: AppState.config.unidadeCnes,
         pa: proc.codigo,
         procedimento: proc.nome,
         cpf: cpf,
-        profissional: els.inputProfissional.value.split(' - ')[1],
+        profissional: els.inputProfissional.value.split(' - ')[1] || els.inputProfissional.value,
         dias: dias.join(' '),
         hIni: els.horaInicio.value,
         hFim: hFim,
         vagas: vagas,
-        vagasCSV: proc.tipo === 'FINANCEIRO' ? (vagas * proc.valor) : vagas,
+        vagasCSV: vagasParaCSV,
         isRegulado: proc.regulado,
-        isRetorno: proc.nome.includes('RETORNO'),
+        isRetorno: els.hiddenIsRetorno.value === 'true',
         st_quebra: els.tipoEscala.value,
         tp_agenda: els.tipoAgenda.value,
-        minutos: els.numMinutos.value,
+        minutos: minutos,
         exames: examesCSV,
         vini: vIniInput.split('-').reverse().join('/'),
         vfim: vFimInput.split('-').reverse().join('/')
@@ -361,27 +410,41 @@ els.formEscala.addEventListener('submit', (e) => {
     AppState.escalas.push(linha);
     localStorage.setItem('SONIA_DATA', JSON.stringify(AppState.escalas));
     renderTable();
+    
     els.formEscala.reset();
     AppState.examesSelecionadosTemp = [];
     AppState.procedimentoAtivo = null;
+    AppState.todosSelecionados = false;
     els.rowExames.style.display = 'none';
     renderExameTags();
+    els.tipoAgenda.disabled = false;
 });
 
 function renderTable() {
     els.tabelaBody.innerHTML = '';
     AppState.escalas.forEach((l, i) => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${l.pa}</td><td>${l.profissional}</td><td>${l.dias}</td><td>${l.hIni}-${l.hFim}</td><td>${l.vagas}</td><td>${l.st_quebra == '0' ? 'Ch' : 'Ag'}</td><td>${l.minutos}</td><td>${l.tp_agenda == '0' ? 'Rede' : 'Loc'}</td><td>${l.exames || '-'}</td><td><button onclick="deleteLinha(${i})">🗑️</button></td>`;
+        tr.innerHTML = `
+            <td>${l.pa}<br><small>${l.procedimento}</small></td>
+            <td>${l.profissional}</td>
+            <td>${l.dias}</td>
+            <td>${l.hIni}-${l.hFim}</td>
+            <td>${l.vagas}</td>
+            <td>${l.st_quebra == '0' ? 'Chegada' : 'Horário'}</td>
+            <td>${l.minutos}</td>
+            <td>${l.tp_agenda == '0' ? 'Rede' : 'Local'}</td>
+            <td>${l.exames || '-'}</td>
+            <td><button class="btn-trash" onclick="deleteLinha(${i})">🗑️</button></td>
+        `;
         els.tabelaBody.appendChild(tr);
     });
 }
 
 window.deleteLinha = (i) => { AppState.escalas.splice(i, 1); localStorage.setItem('SONIA_DATA', JSON.stringify(AppState.escalas)); renderTable(); };
-els.btnLimpar.onclick = () => { if(confirm("Limpar?")) { AppState.escalas = []; localStorage.removeItem('SONIA_DATA'); renderTable(); } };
+els.btnLimpar.onclick = () => { if(confirm("Limpar tudo?")) { AppState.escalas = []; localStorage.removeItem('SONIA_DATA'); renderTable(); } };
 
 els.btnExportar.onclick = () => {
-    if (AppState.escalas.length === 0) return;
+    if (AppState.escalas.length === 0) return alert("Adicione dados primeiro.");
     let csv = "ups;pa;cpf;st_vigencia;dt_vigencia_inicial;dt_vigencia_final;st_quebra;tp_agenda;st_ativo;dia;hora_inicial;hora_final;fichas;fichas_min;retornos;retornos_min;reservas;reservas_min;v_pa_item;ds_observacao\n";
     AppState.escalas.forEach(l => {
         let f=0, fm=0, rt=0, rtm=0, rs=0, rsm=0;
@@ -395,6 +458,9 @@ els.btnExportar.onclick = () => {
     link.href = URL.createObjectURL(blob);
     link.download = `ESCALAS_${AppState.config.unidadeNome}.csv`;
     link.click();
+    AppState.escalas = [];
+    localStorage.removeItem('SONIA_DATA');
+    renderTable();
 };
 
 document.addEventListener('DOMContentLoaded', () => {

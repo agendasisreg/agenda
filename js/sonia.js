@@ -170,7 +170,7 @@ function setupAutocomplete(inputEl, listEl, dataOrFunction, displayKey, valueKey
             const val = (item[valueKey] || "").toString().toUpperCase();
             const disp = (item[displayKey] || "").toString().toUpperCase();
             return val.includes(term) || disp.includes(term);
-        }).slice(0, 15);
+        }).slice(0, 35);
         if (filtered.length > 0) {
             listEl.style.display = 'block';
             filtered.forEach(item => {

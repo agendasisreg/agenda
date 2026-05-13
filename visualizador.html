@@ -6,7 +6,7 @@
     <title>Editor de Escalas CSV - SONIA</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        :root { --primary: #27ae60; --bg: #f8fafc; --text: #1e293b; --border: #e2e8f0; }
+        :root { --primary: #27ae60; --danger: #e74c3c; --bg: #f8fafc; --text: #1e293b; --border: #e2e8f0; }
         body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; }
         .container { max-width: 100%; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
         
@@ -21,72 +21,71 @@
         .header-unidade h2 { margin: 0; font-size: 1.1rem; color: #334155; }
         .header-unidade span { font-size: 0.9rem; color: #64748b; }
 
-        .upload-section { margin-bottom: 20px; }
-        .upload-area { border: 2px dashed var(--border); padding: 20px; text-align: center; border-radius: 8px; cursor: pointer; background: #fff; transition: 0.3s; }
+        .upload-area { border: 2px dashed var(--border); padding: 20px; text-align: center; border-radius: 8px; cursor: pointer; background: #fff; transition: 0.3s; margin-bottom: 20px; }
         .upload-area:hover { border-color: var(--primary); }
         .upload-area.loaded { border-style: solid; border-color: var(--primary); background: #f0fdf4; }
 
         .actions { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; }
         button { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; transition: 0.2s; }
         .btn-export { background: var(--primary); color: white; }
-        .btn-export:hover { background: #219150; }
 
         table { width: 100%; border-collapse: collapse; font-size: 0.75rem; table-layout: fixed; }
         th { background: #f1f5f9; padding: 10px; text-align: left; border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 10; }
-        td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; overflow: hidden; }
-        tr:hover { background: #f8fafc; }
+        td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
         
         input, select { width: 100%; border: 1px solid transparent; padding: 4px; font-family: inherit; font-size: inherit; background: transparent; border-radius: 4px; }
         input:focus, select:focus { border-color: var(--primary); background: white; outline: none; }
         
         .conflito { background-color: #fef2f2 !important; }
-        .nome-exibicao { display: block; font-weight: 600; color: #0f172a; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .info-label { display: block; font-size: 0.65rem; color: #64748b; font-weight: bold; }
+        .tag-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: white; display: inline-block; width: 50px; text-align: center; }
+        .tag-rede { background-color: var(--primary); }
+        .tag-local { background-color: var(--danger); }
         
-        #statusDb { font-size: 0.75rem; color: #94a3b8; margin-bottom: 10px; }
+        .msg-erro { color: var(--danger); font-size: 0.6rem; font-weight: bold; display: block; margin-top: 2px; }
+        .linha-id { font-weight: bold; color: #64748b; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div id="statusDb">Carregando bases...</div>
+    <div id="statusDb" style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 10px;">Carregando bases...</div>
     
     <div class="header-unidade" id="boxUnidade">
         <span id="cnesTopo">CNES: 0000000</span>
-        <h2 id="nomeUnidadeTopo">NOME DA UNIDADE HOSPITALAR</h2>
+        <h2 id="nomeUnidadeTopo">NOME DA UNIDADE</h2>
     </div>
 
-    <div class="upload-section">
-        <div class="upload-area" id="dropZoneEscala">
-            <strong>Carregar Escala CSV</strong><br>
-            <small id="statusEscala">Arraste o arquivo ou clique aqui</small>
-            <input type="file" id="fileEscala" accept=".csv" style="display: none;">
-        </div>
+    <div class="upload-area" id="dropZoneEscala">
+        <strong>Carregar Escala CSV</strong><br>
+        <small id="statusEscala">Arraste o arquivo ou clique aqui</small>
+        <input type="file" id="fileEscala" accept=".csv" style="display: none;">
     </div>
 
     <div class="actions">
         <button class="btn-export" id="btnExportar">📥 Exportar Novo CSV</button>
         <div style="font-size: 0.8rem; margin-left: auto;">
-            Linhas: <b id="totalLinhas">0</b> | Conflitos: <b id="totalConflitos" style="color:red">0</b>
+            Linhas: <b id="totalLinhas">0</b> | Conflitos/Alertas: <b id="totalConflitos" style="color:red">0</b>
         </div>
     </div>
 
     <div style="overflow-x: auto; max-height: 600px;">
         <table id="tabelaDados">
             <colgroup>
+                <col style="width: 40px;">
                 <col style="width: 180px;">
                 <col style="width: 180px;">
                 <col style="width: 90px;">
+                <col style="width: 100px;">
+                <col style="width: 60px;">
+                <col style="width: 60px;">
                 <col style="width: 120px;">
                 <col style="width: 60px;">
-                <col style="width: 60px;">
-                <col style="width: 110px;">
-                <col style="width: 60px;">
-                <col style="width: 80px;">
+                <col style="width: 85px;">
                 <col style="width: 120px;">
             </colgroup>
             <thead>
                 <tr>
+                    <th>#</th>
                     <th>Procedimento</th>
                     <th>Profissional (CPF)</th>
                     <th>Vigência</th>
@@ -125,7 +124,7 @@
             });
             document.getElementById('statusDb').textContent = "✅ Bases de dados prontas.";
         } catch (e) {
-            document.getElementById('statusDb').textContent = "⚠️ Erro ao carregar arquivos de referência.";
+            document.getElementById('statusDb').textContent = "⚠️ Erro ao carregar referências locais.";
         }
     }
 
@@ -148,6 +147,7 @@
         dadosEscala = linhas.slice(1).map((linha, idx) => {
             const c = linha.split(';');
             let tipo = 'F', valorVaga = c[12], mins = c[13];
+            
             if (parseInt(c[14]) > 0) { tipo = 'T'; valorVaga = c[14]; mins = c[15]; }
             else if (parseInt(c[16]) > 0) { tipo = 'R'; valorVaga = c[16]; mins = c[17]; }
 
@@ -171,24 +171,28 @@
     function renderTable() {
         const tbody = document.querySelector('#tabelaDados tbody');
         tbody.innerHTML = '';
-        let conflitos = 0;
+        let alertas = 0;
 
         dadosEscala.forEach((esc, i) => {
-            const isConflito = dadosEscala.some((p, idx) => 
+            const isDuplicado = dadosEscala.some((p, idx) => 
                 idx !== i && p.cpf === esc.cpf && p.pa === esc.pa && p.dia === esc.dia && p.hini === esc.hini && p.vini === esc.vini
             );
-            if (isConflito) conflitos++;
+            const erroRetornoRede = (esc.tipo === 'T' && esc.agenda === '0');
+            const temConflito = isDuplicado || erroRetornoRede;
+            
+            if (temConflito) alertas++;
 
             const tr = document.createElement('tr');
-            if (isConflito) tr.className = 'conflito';
+            if (temConflito) tr.className = 'conflito';
 
             tr.innerHTML = `
+                <td class="linha-id">${i + 1}</td>
                 <td>
-                    <span class="nome-exibicao">${dicioProcs[esc.pa] || 'Não encontrado'}</span>
+                    <span style="font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${dicioProcs[esc.pa] || '---'}</span>
                     <input type="text" value="${esc.pa}" onchange="upd(${i},'pa',this.value.padStart(7,'0'))" style="width:60px; font-weight:bold">
                 </td>
                 <td>
-                    <span class="nome-exibicao">${dicioProf[esc.cpf] || 'Desconhecido'}</span>
+                    <span style="font-weight:600; display:block">${dicioProf[esc.cpf] || '---'}</span>
                     <input type="text" value="${esc.cpf}" onchange="upd(${i},'cpf',this.value.padStart(11,'0'))">
                 </td>
                 <td>
@@ -198,9 +202,9 @@
                 <td><input type="text" value="${esc.dia}" onchange="upd(${i},'dia',this.value)"></td>
                 <td><input type="text" value="${esc.hini}" onchange="upd(${i},'hini',this.value)"></td>
                 <td><input type="text" value="${esc.hfim}" onchange="upd(${i},'hfim',this.value)"></td>
-                <td style="display:flex; gap:2px; align-items:center;">
-                    <input type="number" value="${esc.valorVaga}" onchange="upd(${i},'valorVaga',this.value)" style="width:40px; font-weight:bold">
-                    <select onchange="upd(${i},'tipo',this.value)" style="width:45px; background:#f8fafc; border:1px solid #e2e8f0">
+                <td style="display:flex; gap:2px; align-items:center; border-bottom:none">
+                    <input type="number" value="${esc.valorVaga}" onchange="upd(${i},'valorVaga',this.value)" style="width:35px; font-weight:bold">
+                    <select onchange="upd(${i},'tipo',this.value)" style="width:45px; background:#f1f5f9">
                         <option value="F" ${esc.tipo=='F'?'selected':''}>F</option>
                         <option value="R" ${esc.tipo=='R'?'selected':''}>R</option>
                         <option value="T" ${esc.tipo=='T'?'selected':''}>T</option>
@@ -208,10 +212,12 @@
                 </td>
                 <td><input type="number" value="${esc.mins}" onchange="upd(${i},'mins',this.value)"></td>
                 <td>
-                    <select onchange="upd(${i},'agenda',this.value)">
+                    <span class="tag-badge ${esc.agenda == '0' ? 'tag-rede' : 'tag-local'}">${esc.agenda == '0' ? 'REDE' : 'LOCAL'}</span>
+                    <select onchange="upd(${i},'agenda',this.value)" style="margin-top:4px">
                         <option value="0" ${esc.agenda=='0'?'selected':''}>REDE</option>
                         <option value="1" ${esc.agenda=='1'?'selected':''}>LOCAL</option>
                     </select>
+                    ${erroRetornoRede ? '<span class="msg-erro">⚠️ MUDAR P/ LOCAL</span>' : ''}
                 </td>
                 <td>
                     <input type="text" value="${esc.sub}" onchange="upd(${i},'sub',this.value)" placeholder="Sub" style="font-size:0.65rem">
@@ -221,12 +227,12 @@
             tbody.appendChild(tr);
         });
         document.getElementById('totalLinhas').textContent = dadosEscala.length;
-        document.getElementById('totalConflitos').textContent = conflitos;
+        document.getElementById('totalConflitos').textContent = alertas;
     }
 
     window.upd = (i, f, v) => { 
         dadosEscala[i][f] = v; 
-        if(['pa','cpf','tipo'].includes(f)) renderTable(); 
+        if(['pa','cpf','tipo','agenda'].includes(f)) renderTable(); 
     };
 
     document.getElementById('btnExportar').onclick = () => {

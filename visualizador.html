@@ -23,6 +23,7 @@
         button { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; transition: 0.2s; font-size: 0.75rem; }
         .btn-export { background: var(--primary); color: white; }
         .btn-fix { background: var(--info); color: white; margin-top: 4px; width: 100%; padding: 2px 4px; }
+        .btn-del { background: var(--danger); color: white; margin-top: 4px; width: 100%; padding: 2px 4px; }
 
         table { width: 100%; border-collapse: collapse; font-size: 0.75rem; table-layout: fixed; }
         th { background: #f1f5f9; padding: 10px; text-align: left; border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 10; }
@@ -111,18 +112,21 @@
         }
     }
 
-    // Converte HH:MM para minutos totais
     function t2m(t) {
         if (!t || !t.includes(':')) return 0;
         const [h, m] = t.split(':').map(Number);
         return (h * 60) + m;
     }
 
-    // Converte minutos totais para HH:MM
     function m2t(m) {
         const h = Math.floor(m / 60).toString().padStart(2, '0');
         const min = (m % 60).toString().padStart(2, '0');
         return `${h}:${min}`;
+    }
+
+    // Regra SONIA: Arredonda para o próximo múltiplo de 5
+    function round5(m) {
+        return Math.ceil(m / 5) * 5;
     }
 
     document.getElementById('dropZoneEscala').onclick = () => document.getElementById('fileEscala').click();
@@ -165,15 +169,24 @@
         dadosEscala.forEach((esc, i) => {
             let conflitos = [];
             
-            // 1. Busca linha anterior causadora do conflito
-            const indexConflito = dadosEscala.findIndex((p, idx) => 
+            // Busca conflitos anteriores para o mesmo CPF/Dia
+            const refIdx = dadosEscala.findIndex((p, idx) => 
                 idx < i && p.cpf === esc.cpf && p.dia === esc.dia && p.vini === esc.vini &&
                 (t2m(esc.hini) < t2m(p.hfim) && t2m(p.hini) < t2m(esc.hfim))
             );
 
-            if (indexConflito !== -1) {
-                const isDupe = (dadosEscala[indexConflito].hini === esc.hini && dadosEscala[indexConflito].pa === esc.pa);
-                conflitos.push({ tipo: 'HORA', msg: isDupe ? "⚠️ Duplicidade" : "⚠️ Choque Horário", ref: indexConflito });
+            if (refIdx !== -1) {
+                const r = dadosEscala[refIdx];
+                // DUPLICIDADE REAL: TODOS os campos iguais
+                const isDupe = (r.pa === esc.pa && r.hini === esc.hini && r.hfim === esc.hfim && 
+                                r.valorVaga === esc.valorVaga && r.mins === esc.mins && 
+                                r.agenda === esc.agenda && r.sub === esc.sub);
+                
+                if (isDupe) {
+                    conflitos.push({ tipo: 'DUPLICIDADE', msg: "⚠️ Duplicidade Real", ref: refIdx });
+                } else {
+                    conflitos.push({ tipo: 'HORA', msg: "⚠️ Choque Horário", ref: refIdx });
+                }
             }
 
             if (esc.tipo === 'T' && esc.agenda === '0') {
@@ -190,7 +203,10 @@
                 <td>
                     ${conflitos.map(c => `
                         <span class="msg-erro">${c.msg}</span>
-                        <button class="btn-fix" onclick="fix(${i}, '${c.tipo}', ${c.ref || 0})">⚡ Corrigir</button>
+                        ${c.tipo === 'DUPLICIDADE' 
+                            ? `<button class="btn-del" onclick="remover(${i})">🗑️ Deletar</button>`
+                            : `<button class="btn-fix" onclick="fix(${i}, '${c.tipo}', ${c.ref || 0})">⚡ Corrigir</button>`
+                        }
                     `).join('')}
                 </td>
                 <td>
@@ -229,21 +245,29 @@
         document.getElementById('totalConflitos').textContent = totalAlertas;
     }
 
-    // Lógica de Correção Manual por Alerta
     window.fix = (idx, tipo, refIdx) => {
         const esc = dadosEscala[idx];
-        
         if (tipo === 'REDE') {
             esc.agenda = '1';
         } 
         else if (tipo === 'HORA') {
             const ref = dadosEscala[refIdx];
-            // Nova hora inicial = Hora final da anterior
             esc.hini = ref.hfim;
-            // Cálculo SONIA: Fim = Início + (Vagas * Minutos)
-            const totalMins = parseInt(esc.valorVaga) * parseInt(esc.mins);
-            esc.hfim = m2t(t2m(esc.hini) + totalMins);
+            
+            // Lógica SONIA para Hora Final
+            const isFinanceiro = (esc.mins === '0' || esc.mins === 0 || esc.mins === '');
+            if (isFinanceiro) {
+                esc.hfim = m2t(t2m(esc.hini) + 5);
+            } else {
+                const totalMins = parseInt(esc.valorVaga) * parseInt(esc.mins);
+                esc.hfim = m2t(round5(t2m(esc.hini) + totalMins));
+            }
         }
+        renderTable();
+    };
+
+    window.remover = (idx) => {
+        dadosEscala.splice(idx, 1);
         renderTable();
     };
 

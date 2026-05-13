@@ -3,16 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor e Visualizador CSV - SONIA</title>
+    <title>Editor de Escalas CSV - SONIA</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
         :root { --primary: #27ae60; --bg: #f8fafc; --text: #1e293b; --border: #e2e8f0; }
         body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; }
         .container { max-width: 100%; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-        h1 { font-size: 1.3rem; color: var(--primary); display: flex; align-items: center; gap: 10px; margin-top: 0; }
         
+        .header-unidade { 
+            background: #f1f5f9; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 20px; 
+            border-left: 5px solid var(--primary);
+            display: none;
+        }
+        .header-unidade h2 { margin: 0; font-size: 1.1rem; color: #334155; }
+        .header-unidade span { font-size: 0.9rem; color: #64748b; }
+
         .upload-section { margin-bottom: 20px; }
-        .upload-area { border: 2px dashed var(--border); padding: 25px; text-align: center; border-radius: 8px; cursor: pointer; background: #fff; transition: 0.3s; }
+        .upload-area { border: 2px dashed var(--border); padding: 20px; text-align: center; border-radius: 8px; cursor: pointer; background: #fff; transition: 0.3s; }
         .upload-area:hover { border-color: var(--primary); }
         .upload-area.loaded { border-style: solid; border-color: var(--primary); background: #f0fdf4; }
 
@@ -21,56 +31,69 @@
         .btn-export { background: var(--primary); color: white; }
         .btn-export:hover { background: #219150; }
 
-        table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.75rem; table-layout: fixed; }
         th { background: #f1f5f9; padding: 10px; text-align: left; border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 10; }
-        td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; overflow: hidden; }
         tr:hover { background: #f8fafc; }
         
-        input[type="text"], input[type="number"], select { width: 100%; border: 1px solid transparent; padding: 4px; font-family: inherit; font-size: inherit; background: transparent; }
-        input:focus { border-color: var(--primary); background: white; outline: none; }
+        input, select { width: 100%; border: 1px solid transparent; padding: 4px; font-family: inherit; font-size: inherit; background: transparent; border-radius: 4px; }
+        input:focus, select:focus { border-color: var(--primary); background: white; outline: none; }
         
         .conflito { background-color: #fef2f2 !important; }
-        .badge { padding: 2px 5px; border-radius: 4px; font-size: 0.65rem; font-weight: 600; }
-        .tag-rede { background: #dcfce7; color: #166534; }
-        .tag-local { background: #fee2e2; color: #991b1b; }
-        .info-label { display: block; font-size: 0.6rem; color: #64748b; font-weight: bold; }
-        .nome-exibicao { display: block; font-weight: 600; color: #0f172a; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; }
+        .nome-exibicao { display: block; font-weight: 600; color: #0f172a; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .info-label { display: block; font-size: 0.65rem; color: #64748b; font-weight: bold; }
         
-        #loadingOverlay { font-size: 0.8rem; color: #64748b; margin-bottom: 10px; }
+        #statusDb { font-size: 0.75rem; color: #94a3b8; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🔍 Editor de Escalas CSV</h1>
-    <div id="loadingOverlay">Carregando base de dados...</div>
+    <div id="statusDb">Carregando bases...</div>
+    
+    <div class="header-unidade" id="boxUnidade">
+        <span id="cnesTopo">CNES: 0000000</span>
+        <h2 id="nomeUnidadeTopo">NOME DA UNIDADE HOSPITALAR</h2>
+    </div>
 
     <div class="upload-section">
         <div class="upload-area" id="dropZoneEscala">
-            <strong>Carregar Arquivo de Escala (CSV)</strong><br>
-            <small id="statusEscala">Clique ou arraste o arquivo enviado pela unidade</small>
+            <strong>Carregar Escala CSV</strong><br>
+            <small id="statusEscala">Arraste o arquivo ou clique aqui</small>
             <input type="file" id="fileEscala" accept=".csv" style="display: none;">
         </div>
     </div>
 
     <div class="actions">
         <button class="btn-export" id="btnExportar">📥 Exportar Novo CSV</button>
-        <div id="stats" style="font-size: 0.8rem; margin-left: auto;">
+        <div style="font-size: 0.8rem; margin-left: auto;">
             Linhas: <b id="totalLinhas">0</b> | Conflitos: <b id="totalConflitos" style="color:red">0</b>
         </div>
     </div>
 
-    <div style="overflow-x: auto; max-height: 650px;">
+    <div style="overflow-x: auto; max-height: 600px;">
         <table id="tabelaDados">
+            <colgroup>
+                <col style="width: 180px;">
+                <col style="width: 180px;">
+                <col style="width: 90px;">
+                <col style="width: 120px;">
+                <col style="width: 60px;">
+                <col style="width: 60px;">
+                <col style="width: 110px;">
+                <col style="width: 60px;">
+                <col style="width: 80px;">
+                <col style="width: 120px;">
+            </colgroup>
             <thead>
                 <tr>
-                    <th>Unidade / Proc</th>
+                    <th>Procedimento</th>
                     <th>Profissional (CPF)</th>
                     <th>Vigência</th>
                     <th>Dias</th>
-                    <th>H. Ini</th>
-                    <th>H. Fim</th>
-                    <th>Vagas (F/R/Ret)</th>
+                    <th>Início</th>
+                    <th>Fim</th>
+                    <th>Vagas / Tipo</th>
                     <th>Mins</th>
                     <th>Agenda</th>
                     <th>Subitens / Obs</th>
@@ -83,43 +106,32 @@
 
 <script>
     let dadosEscala = [];
-    let dicioProcs = {};
-    let dicioProf = {};
-    let dicioUnid = {};
+    let dicioProcs = {}, dicioProf = {}, dicioUnid = {};
 
-    const fileEscala = document.getElementById('fileEscala');
-    const tbody = document.querySelector('#tabelaDados tbody');
-    const loadingOverlay = document.getElementById('loadingOverlay');
-
-    async function carregarBasesLocais() {
+    async function carregarBases() {
         try {
             const [resProcs, resProf] = await Promise.all([
                 fetch('procedimentos_unidades.csv').then(r => r.text()),
                 fetch('profissionais.csv').then(r => r.text())
             ]);
-
             resProf.split('\n').slice(1).forEach(l => {
                 const c = l.split(';');
                 if (c[0] && c[1]) dicioProf[c[0].trim().padStart(11, '0')] = c[1].trim();
             });
-
             resProcs.split('\n').slice(1).forEach(l => {
                 const c = l.split(';');
                 if (c[0] && c[1]) dicioUnid[c[0].trim().padStart(7, '0')] = c[1].trim();
                 if (c[2] && c[3]) dicioProcs[c[2].trim().padStart(7, '0')] = c[3].trim();
             });
-
-            loadingOverlay.innerHTML = "✅ Bases de dados carregadas.";
-            setTimeout(() => loadingOverlay.style.display = 'none', 2000);
-        } catch (err) {
-            loadingOverlay.innerHTML = "⚠️ Erro ao carregar arquivos locais (procedimentos_unidades.csv ou profissionais.csv). Certifique-se que estão na mesma pasta.";
-            console.error(err);
+            document.getElementById('statusDb').textContent = "✅ Bases de dados prontas.";
+        } catch (e) {
+            document.getElementById('statusDb').textContent = "⚠️ Erro ao carregar arquivos de referência.";
         }
     }
 
-    document.getElementById('dropZoneEscala').onclick = () => fileEscala.click();
+    document.getElementById('dropZoneEscala').onclick = () => document.getElementById('fileEscala').click();
 
-    fileEscala.onchange = (e) => {
+    document.getElementById('fileEscala').onchange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
@@ -135,41 +147,35 @@
         const linhas = text.split('\n').filter(l => l.trim() !== '');
         dadosEscala = linhas.slice(1).map((linha, idx) => {
             const c = linha.split(';');
+            let tipo = 'F', valorVaga = c[12], mins = c[13];
+            if (parseInt(c[14]) > 0) { tipo = 'T'; valorVaga = c[14]; mins = c[15]; }
+            else if (parseInt(c[16]) > 0) { tipo = 'R'; valorVaga = c[16]; mins = c[17]; }
+
             return {
-                id: idx,
-                ups: c[0]?.trim().padStart(7, '0') || '',
-                pa: c[1]?.trim().padStart(7, '0') || '',
-                cpf: c[2]?.trim().padStart(11, '0') || '',
-                st_vig: c[3] || '1',
-                vini: c[4] || '',
-                vfim: c[5] || '',
-                quebra: c[6] || '0',
-                agenda: c[7] || '0',
-                ativo: c[8] || '1',
-                dia: c[9] || '',
-                hini: c[10] || '',
-                hfim: c[11] || '',
-                f: c[12] || '0',
-                fm: c[13] || '0',
-                rt: c[14] || '0',
-                rtm: c[15] || '0',
-                rs: c[16] || '0',
-                rsm: c[17] || '0',
-                sub: c[18] || '',
-                obs: c[19] || ''
+                idx, ups: c[0]?.trim().padStart(7, '0'), pa: c[1]?.trim().padStart(7, '0'), 
+                cpf: c[2]?.trim().padStart(11, '0'), st_vig: c[3], vini: c[4], vfim: c[5], 
+                quebra: c[6], agenda: c[7], ativo: c[8], dia: c[9], hini: c[10], hfim: c[11],
+                tipo, valorVaga, mins, sub: c[18] || '', obs: c[19] || ''
             };
         });
+        
+        if (dadosEscala.length > 0) {
+            const prim = dadosEscala[0];
+            document.getElementById('boxUnidade').style.display = 'block';
+            document.getElementById('cnesTopo').textContent = `CNES: ${prim.ups}`;
+            document.getElementById('nomeUnidadeTopo').textContent = dicioUnid[prim.ups] || "Unidade não identificada";
+        }
         renderTable();
     }
 
     function renderTable() {
+        const tbody = document.querySelector('#tabelaDados tbody');
         tbody.innerHTML = '';
         let conflitos = 0;
 
         dadosEscala.forEach((esc, i) => {
-            const isConflito = dadosEscala.some((prev, idx) => 
-                idx !== i && prev.cpf === esc.cpf && prev.pa === esc.pa && 
-                prev.dia === esc.dia && prev.hini === esc.hini && prev.vini === esc.vini
+            const isConflito = dadosEscala.some((p, idx) => 
+                idx !== i && p.cpf === esc.cpf && p.pa === esc.pa && p.dia === esc.dia && p.hini === esc.hini && p.vini === esc.vini
             );
             if (isConflito) conflitos++;
 
@@ -178,75 +184,69 @@
 
             tr.innerHTML = `
                 <td>
-                    <span class="nome-exibicao" title="${dicioUnid[esc.ups] || ''}">${dicioUnid[esc.ups] || 'Unidade não encontrada'}</span>
-                    <div style="display:flex; gap:2px">
-                        <input type="text" value="${esc.ups}" onchange="update(${i}, 'ups', this.value)" style="width:55px; font-weight:bold" title="CNES">
-                        <input type="text" value="${esc.pa}" onchange="update(${i}, 'pa', this.value)" style="width:55px" title="Cód. Procedimento">
-                    </div>
-                    <small class="info-label">${dicioProcs[esc.pa] || ''}</small>
+                    <span class="nome-exibicao">${dicioProcs[esc.pa] || 'Não encontrado'}</span>
+                    <input type="text" value="${esc.pa}" onchange="upd(${i},'pa',this.value.padStart(7,'0'))" style="width:60px; font-weight:bold">
                 </td>
                 <td>
-                    <span class="nome-exibicao">${dicioProf[esc.cpf] || 'Profissional não encontrado'}</span>
-                    <input type="text" value="${esc.cpf}" onchange="update(${i}, 'cpf', this.value)">
+                    <span class="nome-exibicao">${dicioProf[esc.cpf] || 'Desconhecido'}</span>
+                    <input type="text" value="${esc.cpf}" onchange="upd(${i},'cpf',this.value.padStart(11,'0'))">
                 </td>
                 <td>
-                    <input type="text" value="${esc.vini}" onchange="update(${i}, 'vini', this.value)" style="width:75px"><br>
-                    <input type="text" value="${esc.vfim}" onchange="update(${i}, 'vfim', this.value)" style="width:75px">
+                    <input type="text" value="${esc.vini}" onchange="upd(${i},'vini',this.value)" style="font-size:0.7rem"><br>
+                    <input type="text" value="${esc.vfim}" onchange="upd(${i},'vfim',this.value)" style="font-size:0.7rem">
                 </td>
-                <td><input type="text" value="${esc.dia}" onchange="update(${i}, 'dia', this.value)"></td>
-                <td><input type="text" value="${esc.hini}" onchange="update(${i}, 'hini', this.value)" style="width:45px"></td>
-                <td><input type="text" value="${esc.hfim}" onchange="update(${i}, 'hfim', this.value)" style="width:45px"></td>
-                <td>
-                    F:<input type="number" value="${esc.f}" onchange="update(${i}, 'f', this.value)" style="width:30px">
-                    R:<input type="number" value="${esc.rs}" onchange="update(${i}, 'rs', this.value)" style="width:30px">
-                    T:<input type="number" value="${esc.rt}" onchange="update(${i}, 'rt', this.value)" style="width:30px">
+                <td><input type="text" value="${esc.dia}" onchange="upd(${i},'dia',this.value)"></td>
+                <td><input type="text" value="${esc.hini}" onchange="upd(${i},'hini',this.value)"></td>
+                <td><input type="text" value="${esc.hfim}" onchange="upd(${i},'hfim',this.value)"></td>
+                <td style="display:flex; gap:2px; align-items:center;">
+                    <input type="number" value="${esc.valorVaga}" onchange="upd(${i},'valorVaga',this.value)" style="width:40px; font-weight:bold">
+                    <select onchange="upd(${i},'tipo',this.value)" style="width:45px; background:#f8fafc; border:1px solid #e2e8f0">
+                        <option value="F" ${esc.tipo=='F'?'selected':''}>F</option>
+                        <option value="R" ${esc.tipo=='R'?'selected':''}>R</option>
+                        <option value="T" ${esc.tipo=='T'?'selected':''}>T</option>
+                    </select>
                 </td>
-                <td><input type="number" value="${esc.fm || esc.rsm || esc.rtm}" onchange="updateMins(${i}, this.value)" style="width:35px"></td>
+                <td><input type="number" value="${esc.mins}" onchange="upd(${i},'mins',this.value)"></td>
                 <td>
-                    <select onchange="update(${i}, 'agenda', this.value)">
+                    <select onchange="upd(${i},'agenda',this.value)">
                         <option value="0" ${esc.agenda=='0'?'selected':''}>REDE</option>
                         <option value="1" ${esc.agenda=='1'?'selected':''}>LOCAL</option>
                     </select>
                 </td>
                 <td>
-                    <input type="text" value="${esc.sub}" onchange="update(${i}, 'sub', this.value)" placeholder="Subitens">
-                    <input type="text" value="${esc.obs}" onchange="update(${i}, 'obs', this.value)" placeholder="Observação">
+                    <input type="text" value="${esc.sub}" onchange="upd(${i},'sub',this.value)" placeholder="Sub" style="font-size:0.65rem">
+                    <input type="text" value="${esc.obs}" onchange="upd(${i},'obs',this.value)" placeholder="Obs" style="font-size:0.65rem">
                 </td>
             `;
             tbody.appendChild(tr);
         });
-
         document.getElementById('totalLinhas').textContent = dadosEscala.length;
         document.getElementById('totalConflitos').textContent = conflitos;
     }
 
-    window.update = (idx, campo, valor) => {
-        if (['ups', 'pa'].includes(campo)) valor = valor.padStart(7, '0');
-        if (campo === 'cpf') valor = valor.padStart(11, '0');
-        dadosEscala[idx][campo] = valor;
-        if (['ups', 'pa', 'cpf'].includes(campo)) renderTable(); 
-    };
-
-    window.updateMins = (idx, valor) => {
-        dadosEscala[idx].fm = valor;
-        dadosEscala[idx].rtm = valor;
-        dadosEscala[idx].rsm = valor;
+    window.upd = (i, f, v) => { 
+        dadosEscala[i][f] = v; 
+        if(['pa','cpf','tipo'].includes(f)) renderTable(); 
     };
 
     document.getElementById('btnExportar').onclick = () => {
         if (dadosEscala.length === 0) return;
         let csv = "ups;pa;cpf;st_vigencia;dt_vigencia_inicial;dt_vigencia_final;st_quebra;tp_agenda;st_ativo;dia;hora_inicial;hora_final;fichas;fichas_min;retornos;retornos_min;reservas;reservas_min;v_pa_item;ds_observacao\n";
         dadosEscala.forEach(e => {
-            csv += `${e.ups};${e.pa};${e.cpf};${e.st_vig};${e.vini};${e.vfim};${e.quebra};${e.agenda};${e.ativo};${e.dia};${e.hini};${e.hfim};${e.f};${e.fm};${e.rt};${e.rtm};${e.rs};${e.rsm};${e.sub};${e.obs}\n`;
+            let f=0, fm=0, rt=0, rtm=0, rs=0, rsm=0;
+            if(e.tipo==='F'){ f=e.valorVaga; fm=e.mins; }
+            else if(e.tipo==='T'){ rt=e.valorVaga; rtm=e.mins; }
+            else if(e.tipo==='R'){ rs=e.valorVaga; rsm=e.mins; }
+            csv += `${e.ups};${e.pa};${e.cpf};${e.st_vig};${e.vini};${e.vfim};${e.quebra};${e.agenda};${e.ativo};${e.dia};${e.hini};${e.hfim};${f};${fm};${rt};${rtm};${rs};${rsm};${e.sub};${e.obs}\n`;
         });
         const blob = new Blob([csv], { type: 'text/csv;charset=iso-8859-1;' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `REVISADO_${document.getElementById('statusEscala').textContent || 'escala.csv'}`;
+        link.download = `REVISADO_${document.getElementById('nomeUnidadeTopo').textContent.replace(/\s+/g,'_')}.csv`;
         link.click();
     };
 
-    document.addEventListener('DOMContentLoaded', carregarBasesLocais);
+    document.addEventListener('DOMContentLoaded', carregarBases);
 </script>
 </body>
 </html>

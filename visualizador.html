@@ -89,7 +89,7 @@
 
 <script>
     let dadosEscala = [];
-    let dicioProcs = {}, dicioProf = {}, dicioUnid = {};
+    let dicioProcs = {}, dicioProf = {}, dicioUnid = {}, dicioTipoProc = {};
 
     async function carregarBases() {
         try {
@@ -104,7 +104,12 @@
             resProcs.split('\n').slice(1).forEach(l => {
                 const c = l.split(';');
                 if (c[0] && c[1]) dicioUnid[c[0].trim().padStart(7, '0')] = c[1].trim();
-                if (c[2] && c[3]) dicioProcs[c[2].trim().padStart(7, '0')] = c[3].trim();
+                if (c[2] && c[3]) {
+                    const codProc = c[2].trim().padStart(7, '0');
+                    dicioProcs[codProc] = c[3].trim();
+                    // Coluna 6 (índice 6) contém o tipo FISICO ou FINANCEIRO
+                    dicioTipoProc[codProc] = c[6] ? c[6].trim().toUpperCase() : 'FISICO';
+                }
             });
             document.getElementById('statusDb').textContent = "✅ Bases de dados prontas.";
         } catch (e) {
@@ -242,14 +247,16 @@
     }
 
     function calcularHoraFinal(esc) {
-        // Se for financeiro (procedimento que não usa minutos/tempo real), fixa 5 min
-        if (esc.sub && esc.sub.startsWith('FIN')) { 
+        const tipoProcedimento = dicioTipoProc[esc.pa] || 'FISICO';
+
+        // Regra para procedimentos financeiros ou marcações financeiras forçadas
+        if (tipoProcedimento === 'FINANCEIRO' || (esc.sub && esc.sub.startsWith('FIN'))) { 
              return m2t(t2m(esc.hini) + 5);
         }
         
-        // Regra SONIA: Vagas * Minutos arredondado para 5 min
+        // Regra FÍSICO: Vagas * Minutos arredondado para o próximo múltiplo de 5 min
         const totalMins = parseInt(esc.valorVaga || 0) * parseInt(esc.mins || 0);
-        if (totalMins === 0) return m2t(t2m(esc.hini) + 5); // Fallback para 5 min se dados zerados
+        if (totalMins === 0) return m2t(t2m(esc.hini) + 5); // Fallback de segurança
         
         return m2t(round5(t2m(esc.hini) + totalMins));
     }
@@ -274,9 +281,12 @@
 
     window.upd = (i, f, v) => { 
         dadosEscala[i][f] = v; 
-        if(['hini', 'valorVaga', 'mins'].includes(f)) {
+        
+        // Se alterar a hora inicial, vagas, minutos ou procedimento, recalcula a hora final
+        if(['hini', 'valorVaga', 'mins', 'pa'].includes(f)) {
             dadosEscala[i].hfim = calcularHoraFinal(dadosEscala[i]);
         }
+        
         if(['pa','cpf','tipo','agenda','hini','hfim','dia','valorVaga','mins'].includes(f)) renderTable(); 
     };
 

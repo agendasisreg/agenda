@@ -124,7 +124,6 @@
         return `${h}:${min}`;
     }
 
-    // Regra SONIA: Arredonda para o próximo múltiplo de 5
     function round5(m) {
         return Math.ceil(m / 5) * 5;
     }
@@ -168,8 +167,6 @@
 
         dadosEscala.forEach((esc, i) => {
             let conflitos = [];
-            
-            // Busca conflitos anteriores para o mesmo CPF/Dia
             const refIdx = dadosEscala.findIndex((p, idx) => 
                 idx < i && p.cpf === esc.cpf && p.dia === esc.dia && p.vini === esc.vini &&
                 (t2m(esc.hini) < t2m(p.hfim) && t2m(p.hini) < t2m(esc.hfim))
@@ -177,7 +174,6 @@
 
             if (refIdx !== -1) {
                 const r = dadosEscala[refIdx];
-                // DUPLICIDADE REAL: TODOS os campos iguais
                 const isDupe = (r.pa === esc.pa && r.hini === esc.hini && r.hfim === esc.hfim && 
                                 r.valorVaga === esc.valorVaga && r.mins === esc.mins && 
                                 r.agenda === esc.agenda && r.sub === esc.sub);
@@ -245,6 +241,19 @@
         document.getElementById('totalConflitos').textContent = totalAlertas;
     }
 
+    function calcularHoraFinal(esc) {
+        // Se for financeiro (procedimento que não usa minutos/tempo real), fixa 5 min
+        if (esc.sub && esc.sub.startsWith('FIN')) { 
+             return m2t(t2m(esc.hini) + 5);
+        }
+        
+        // Regra SONIA: Vagas * Minutos arredondado para 5 min
+        const totalMins = parseInt(esc.valorVaga || 0) * parseInt(esc.mins || 0);
+        if (totalMins === 0) return m2t(t2m(esc.hini) + 5); // Fallback para 5 min se dados zerados
+        
+        return m2t(round5(t2m(esc.hini) + totalMins));
+    }
+
     window.fix = (idx, tipo, refIdx) => {
         const esc = dadosEscala[idx];
         if (tipo === 'REDE') {
@@ -253,15 +262,7 @@
         else if (tipo === 'HORA') {
             const ref = dadosEscala[refIdx];
             esc.hini = ref.hfim;
-            
-            // Lógica SONIA para Hora Final
-            const isFinanceiro = (esc.mins === '0' || esc.mins === 0 || esc.mins === '');
-            if (isFinanceiro) {
-                esc.hfim = m2t(t2m(esc.hini) + 5);
-            } else {
-                const totalMins = parseInt(esc.valorVaga) * parseInt(esc.mins);
-                esc.hfim = m2t(round5(t2m(esc.hini) + totalMins));
-            }
+            esc.hfim = calcularHoraFinal(esc);
         }
         renderTable();
     };
@@ -273,6 +274,9 @@
 
     window.upd = (i, f, v) => { 
         dadosEscala[i][f] = v; 
+        if(['hini', 'valorVaga', 'mins'].includes(f)) {
+            dadosEscala[i].hfim = calcularHoraFinal(dadosEscala[i]);
+        }
         if(['pa','cpf','tipo','agenda','hini','hfim','dia','valorVaga','mins'].includes(f)) renderTable(); 
     };
 

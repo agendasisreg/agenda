@@ -22,23 +22,31 @@
         .actions { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; }
         button { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; transition: 0.2s; font-size: 0.75rem; }
         .btn-export { background: var(--primary); color: white; }
-        .btn-fix { background: var(--info); color: white; margin-top: 4px; width: 100%; padding: 2px 4px; }
-        .btn-del { background: var(--danger); color: white; margin-top: 4px; width: 100%; padding: 2px 4px; }
+        .btn-fix { background: var(--info); color: white; margin-top: 4px; width: 100%; padding: 4px 8px; }
+        .btn-icon-del { background: transparent; color: var(--danger); font-size: 1.2rem; padding: 5px; }
+        .btn-icon-del:hover { background: #fee2e2; }
 
-        table { width: 100%; border-collapse: collapse; font-size: 0.75rem; table-layout: fixed; }
-        th { background: #f1f5f9; padding: 10px; text-align: left; border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 10; }
-        td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.72rem; table-layout: fixed; }
+        th { background: #f1f5f9; padding: 8px; text-align: left; border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 10; }
+        td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; border-right: 1px solid #f1f5f9; }
         
-        input, select { width: 100%; border: 1px solid transparent; padding: 4px; font-family: inherit; font-size: inherit; background: transparent; border-radius: 4px; }
+        input, select { width: 100%; border: 1px solid transparent; padding: 2px 4px; font-family: inherit; font-size: inherit; background: transparent; border-radius: 4px; }
         input:focus, select:focus { border-color: var(--primary); background: white; outline: none; }
         
-        .conflito { background-color: #fef2f2 !important; }
-        .tag-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: white; display: inline-block; width: 50px; text-align: center; }
+        .conflito { background-color: #fff1f2 !important; }
+        .tag-badge { padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; font-weight: bold; color: white; display: inline-block; text-align: center; }
         .tag-rede { background-color: var(--primary); }
         .tag-local { background-color: var(--danger); }
         
-        .msg-erro { color: var(--danger); font-size: 0.65rem; font-weight: bold; display: block; line-height: 1.1; }
-        .linha-id { font-weight: bold; color: #64748b; text-align: center; }
+        .tag-status { font-size: 0.6rem; font-weight: bold; text-transform: uppercase; margin-top: 2px; display: inline-block; padding: 1px 4px; border-radius: 3px; }
+        .status-regulado { background: #dcfce7; color: #166534; }
+        .status-autorizativo { background: #fef9c3; color: #854d0e; }
+
+        .msg-erro { color: var(--danger); font-size: 0.65rem; font-weight: bold; display: block; line-height: 1.2; margin-bottom: 2px; }
+        .linha-id { font-weight: bold; color: #64748b; text-align: center; padding-top: 10px !important; }
+        
+        .stack-input { display: flex; flex-direction: column; gap: 2px; }
+        .stack-input input { border-bottom: 1px solid #e2e8f0; }
     </style>
 </head>
 <body>
@@ -64,23 +72,22 @@
         </div>
     </div>
 
-    <div style="overflow-x: auto; max-height: 600px;">
+    <div style="overflow-x: auto; max-height: 700px;">
         <table id="tabelaDados">
             <thead>
                 <tr>
-                    <th style="width: 35px;">#</th>
+                    <th style="width: 30px;">#</th>
                     <th style="width: 120px;">Alertas / Ação</th>
                     <th style="width: 180px;">Procedimento</th>
-                    <th style="width: 180px;">Profissional (CPF)</th>
-                    <th style="width: 130px;">Vigência (Início - Fim)</th>
-                    <th style="width: 100px;">Dias</th>
-                    <th style="width: 60px;">Início</th>
-                    <th style="width: 60px;">Fim</th>
-                    <th style="width: 110px;">Vagas / Tipo</th>
-                    <th style="width: 50px;">Min</th>
-                    <th style="width: 85px;">Agenda</th>
-                    <th style="width: 80px;">v_pa_item</th>
-                    <th style="width: 100px;">Observação</th>
+                    <th style="width: 170px;">Profissional (CPF)</th>
+                    <th style="width: 120px;">Vigência (Ini/Fim)</th>
+                    <th style="width: 80px;">Dias</th>
+                    <th style="width: 65px;">Horário</th>
+                    <th style="width: 100px;">Vagas / Tipo</th>
+                    <th style="width: 40px;">Min</th>
+                    <th style="width: 80px;">Agenda</th>
+                    <th style="width: 140px;">Subitem / Obs</th>
+                    <th style="width: 40px; text-align: center;">🗑️</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -90,7 +97,7 @@
 
 <script>
     let dadosEscala = [];
-    let dicioProcs = {}, dicioProf = {}, dicioUnid = {}, procsPorUnidade = {};
+    let dicioProcs = {}, dicioProf = {}, dicioUnid = {}, procsPorUnidade = {}, subItemsPorUnidade = {};
 
     async function carregarBases() {
         try {
@@ -109,22 +116,26 @@
                 if (c.length < 3) return;
                 
                 const cnes = c[0].trim().padStart(7, '0');
-                const nomeUnidade = c[1].trim();
                 const codProc = c[2].trim().padStart(7, '0');
-                const descProc = c[3].trim();
-                const tipoProc = c[6] ? c[6].trim().toUpperCase() : 'FISICO';
+                const codSub = c[4] ? c[4].trim() : "";
                 const regulado = c[7] ? c[7].trim().toUpperCase() === 'SIM' : false;
 
-                dicioUnid[cnes] = nomeUnidade;
+                dicioUnid[cnes] = c[1].trim();
                 
                 if (!procsPorUnidade[cnes]) procsPorUnidade[cnes] = new Set();
                 procsPorUnidade[cnes].add(codProc);
 
+                if (codSub) {
+                    if (!subItemsPorUnidade[cnes]) subItemsPorUnidade[cnes] = {};
+                    if (!subItemsPorUnidade[cnes][codProc]) subItemsPorUnidade[cnes][codProc] = new Set();
+                    subItemsPorUnidade[cnes][codProc].add(codSub);
+                }
+
                 dicioProcs[codProc] = {
-                    nome: descProc,
-                    tipo: tipoProc,
+                    nome: c[3].trim(),
+                    tipo: c[6] ? c[6].trim().toUpperCase() : 'FISICO',
                     regulado: regulado,
-                    isRetorno: descProc.includes('RETORNO')
+                    isRetorno: c[3].trim().includes('RETORNO')
                 };
             });
             document.getElementById('statusDb').textContent = "✅ Bases de dados prontas.";
@@ -145,9 +156,7 @@
         return `${h}:${min}`;
     }
 
-    function round5(m) {
-        return Math.ceil(m / 5) * 5;
-    }
+    function round5(m) { return Math.ceil(m / 5) * 5; }
 
     document.getElementById('dropZoneEscala').onclick = () => document.getElementById('fileEscala').click();
     document.getElementById('fileEscala').onchange = (e) => {
@@ -169,7 +178,7 @@
                 idx, ups: c[0]?.trim().padStart(7, '0'), pa: c[1]?.trim().padStart(7, '0'), 
                 cpf: c[2]?.trim().padStart(11, '0'), st_vig: c[3], vini: c[4], vfim: c[5], 
                 quebra: c[6], agenda: c[7], ativo: c[8], dia: c[9], hini: c[10], hfim: c[11],
-                tipo, valorVaga, mins, sub: c[18] || '', obs: c[19] || ''
+                tipo, valorVaga, mins, sub: (c[18] || '').trim(), obs: c[19] || ''
             };
         });
         if (dadosEscala.length > 0) {
@@ -190,23 +199,31 @@
             let conflitos = [];
             const infoBase = dicioProcs[esc.pa];
             
-            // 1. Validação de Cadastro na Unidade
+            // 1. Validação de Cadastro PA
             if (procsPorUnidade[esc.ups] && !procsPorUnidade[esc.ups].has(esc.pa)) {
                 conflitos.push({ tipo: 'CADASTRO', msg: "❌ PA não Cadastrado" });
             }
 
-            // 2. Validação de Choque de Horário (Mesmo CPF + PA)
+            // 2. Validação de Subitem (v_pa_item)
+            if (esc.sub && subItemsPorUnidade[esc.ups] && subItemsPorUnidade[esc.ups][esc.pa]) {
+                if (!subItemsPorUnidade[esc.ups][esc.pa].has(esc.sub)) {
+                    conflitos.push({ tipo: 'SUBITEM', msg: "❌ Subitem não Cadastrado" });
+                }
+            } else if (esc.sub) {
+                 conflitos.push({ tipo: 'SUBITEM', msg: "❌ Subitem não Cadastrado" });
+            }
+
+            // 3. Choque de Horário
             const refIdx = dadosEscala.findIndex((p, idx) => 
                 idx < i && p.pa === esc.pa && p.cpf === esc.cpf && p.dia === esc.dia && p.vini === esc.vini &&
                 (t2m(esc.hini) < t2m(p.hfim) && t2m(p.hini) < t2m(esc.hfim))
             );
             if (refIdx !== -1) conflitos.push({ tipo: 'HORA', msg: "⚠️ Choque Horário", ref: refIdx });
 
-            // 3. Regras de Vagas e Agenda
+            // 4. Regras de Vagas
             if (infoBase) {
-                if (infoBase.regulado && esc.tipo !== 'R') {
-                    conflitos.push({ tipo: 'VAGA_R', msg: "⚠️ Deve ser Reserva" });
-                } else if (infoBase.isRetorno) {
+                if (infoBase.regulado && esc.tipo !== 'R') conflitos.push({ tipo: 'VAGA_R', msg: "⚠️ Deve ser Reserva" });
+                else if (infoBase.isRetorno) {
                     if (esc.tipo !== 'T') conflitos.push({ tipo: 'VAGA_T', msg: "⚠️ Deve ser Retorno" });
                     if (esc.agenda === '0') conflitos.push({ tipo: 'REDE_RET', msg: "⚠️ Retorno deve ser Local" });
                 } else if (!infoBase.regulado && !infoBase.isRetorno) {
@@ -216,7 +233,6 @@
             }
 
             if (conflitos.length > 0) totalAlertas++;
-
             const tr = document.createElement('tr');
             if (conflitos.length > 0) tr.className = 'conflito';
 
@@ -224,25 +240,31 @@
                 <td class="linha-id">${i + 1}</td>
                 <td>
                     ${conflitos.map(c => `<span class="msg-erro">${c.msg}</span>`).join('')}
-                    ${conflitos.some(c => c.tipo === 'HORA') ? `<button class="btn-fix" onclick="fix(${i}, 'HORA', ${conflitos.find(c => c.tipo==='HORA').ref})">⚡ Ajustar Hora</button>` : ''}
-                    <button class="btn-del" onclick="remover(${i})">Deletar</button>
+                    ${conflitos.some(c => c.tipo === 'HORA') ? `<button class="btn-fix" onclick="fix(${i}, 'HORA', ${conflitos.find(c => c.tipo==='HORA').ref})">⚡ Corrigir</button>` : ''}
                 </td>
                 <td>
                     <span style="font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${infoBase?.nome || '---'}</span>
-                    <input type="text" value="${esc.pa}" onchange="upd(${i},'pa',this.value.padStart(7,'0'))" style="width:60px; font-weight:bold">
+                    <input type="text" value="${esc.pa}" onchange="upd(${i},'pa',this.value.padStart(7,'0'))" style="width:60px; font-weight:bold; display:inline">
+                    <span class="tag-status ${infoBase?.regulado ? 'status-regulado' : 'status-autorizativo'}">${infoBase?.regulado ? 'Regulado' : 'Autorizativo'}</span>
                 </td>
                 <td>
-                    <span style="font-weight:600; display:block">${dicioProf[esc.cpf] || '---'}</span>
-                    <input type="text" value="${esc.cpf}" onchange="upd(${i},'cpf',this.value.padStart(11,'0'))">
+                    <span style="font-weight:600; display:block; white-space:nowrap; overflow:hidden">${dicioProf[esc.cpf] || '---'}</span>
+                    <input type="text" value="${esc.cpf}" onchange="upd(${i},'cpf',this.value.padStart(11,'0'))" style="font-size:0.65rem">
                 </td>
-                <td style="display:flex; gap:2px">
-                    <input type="text" value="${esc.vini}" onchange="upd(${i},'vini',this.value)" style="font-size:0.65rem; width:50%">
-                    <input type="text" value="${esc.vfim}" onchange="upd(${i},'vfim',this.value)" style="font-size:0.65rem; width:50%">
+                <td>
+                    <div class="stack-input">
+                        <input type="text" value="${esc.vini}" onchange="upd(${i},'vini',this.value)">
+                        <input type="text" value="${esc.vfim}" onchange="upd(${i},'vfim',this.value)">
+                    </div>
                 </td>
-                <td><input type="text" value="${esc.dia}" onchange="upd(${i},'dia',this.value)"></td>
-                <td><input type="text" value="${esc.hini}" onchange="upd(${i},'hini',this.value)"></td>
-                <td><input type="text" value="${esc.hfim}" onchange="upd(${i},'hfim',this.value)"></td>
-                <td style="display:flex; gap:2px; align-items:center; border-bottom:none">
+                <td><input type="text" value="${esc.dia}" onchange="upd(${i},'dia',this.value)" style="text-align:center"></td>
+                <td>
+                    <div class="stack-input">
+                        <input type="text" value="${esc.hini}" onchange="upd(${i},'hini',this.value)" style="font-weight:600">
+                        <input type="text" value="${esc.hfim}" onchange="upd(${i},'hfim',this.value)">
+                    </div>
+                </td>
+                <td style="display:flex; gap:2px; align-items:center; border-right:none">
                     <input type="number" value="${esc.valorVaga}" onchange="upd(${i},'valorVaga',this.value)" style="width:35px; font-weight:bold">
                     <select onchange="upd(${i},'tipo',this.value)" style="width:45px; background:#f1f5f9">
                         <option value="F" ${esc.tipo=='F'?'selected':''}>F</option>
@@ -253,13 +275,20 @@
                 <td><input type="number" value="${esc.mins}" onchange="upd(${i},'mins',this.value)"></td>
                 <td>
                     <span class="tag-badge ${esc.agenda == '0' ? 'tag-rede' : 'tag-local'}">${esc.agenda == '0' ? 'REDE' : 'LOCAL'}</span>
-                    <select onchange="upd(${i},'agenda',this.value)" style="margin-top:4px">
+                    <select onchange="upd(${i},'agenda',this.value)" style="margin-top:2px">
                         <option value="0" ${esc.agenda=='0'?'selected':''}>REDE</option>
                         <option value="1" ${esc.agenda=='1'?'selected':''}>LOCAL</option>
                     </select>
                 </td>
-                <td><input type="text" value="${esc.sub}" onchange="upd(${i},'sub',this.value)"></td>
-                <td><input type="text" value="${esc.obs}" onchange="upd(${i},'obs',this.value)" style="font-size:0.65rem"></td>
+                <td>
+                    <div class="stack-input">
+                        <input type="text" value="${esc.sub}" onchange="upd(${i},'sub',this.value)" placeholder="v_pa_item" style="font-weight:600; color:var(--info)">
+                        <input type="text" value="${esc.obs}" onchange="upd(${i},'obs',this.value)" placeholder="Observação" style="font-size:0.6rem">
+                    </div>
+                </td>
+                <td style="text-align:center">
+                    <button class="btn-icon-del" onclick="remover(${i})" title="Remover Linha">🗑️</button>
+                </td>
             `;
             tbody.appendChild(tr);
         });
@@ -284,7 +313,7 @@
         renderTable();
     };
 
-    window.remover = (idx) => { dadosEscala.splice(idx, 1); renderTable(); };
+    window.remover = (idx) => { if(confirm('Deseja realmente excluir esta linha?')) { dadosEscala.splice(idx, 1); renderTable(); } };
 
     window.upd = (i, f, v) => { 
         dadosEscala[i][f] = v; 

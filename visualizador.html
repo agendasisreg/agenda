@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de Escalas CSV - SONIA</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #27ae60; --danger: #e74c3c; --bg: #f8fafc; --text: #1e293b; --border: #e2e8f0; --warning: #f39c12; --info: #3498db; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 100%; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        
+        .header-unidade { 
+            background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid var(--primary); display: none;
+        }
+        .header-unidade h2 { margin: 0; font-size: 1.1rem; color: #334155; }
+
+        .upload-area { border: 2px dashed var(--border); padding: 20px; text-align: center; border-radius: 8px; cursor: pointer; background: #fff; transition: 0.3s; margin-bottom: 20px; }
+        .upload-area:hover { border-color: var(--primary); }
+        .upload-area.loaded { border-style: solid; border-color: var(--primary); background: #f0fdf4; }
+
+        .actions { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; }
+        button { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; transition: 0.2s; font-size: 0.75rem; }
+        .btn-export { background: var(--primary); color: white; }
+        .btn-fix { background: var(--info); color: white; margin-top: 4px; width: 100%; padding: 2px 4px; }
+        .btn-del { background: var(--danger); color: white; margin-top: 4px; width: 100%; padding: 2px 4px; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.75rem; table-layout: fixed; }
+        th { background: #f1f5f9; padding: 10px; text-align: left; border-bottom: 2px solid var(--border); position: sticky; top: 0; z-index: 10; }
+        td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        
+        input, select { width: 100%; border: 1px solid transparent; padding: 4px; font-family: inherit; font-size: inherit; background: transparent; border-radius: 4px; }
+        input:focus, select:focus { border-color: var(--primary); background: white; outline: none; }
+        
+        .conflito { background-color: #fef2f2 !important; }
+        .tag-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: white; display: inline-block; width: 50px; text-align: center; }
+        .tag-rede { background-color: var(--primary); }
+        .tag-local { background-color: var(--danger); }
+        
+        .msg-erro { color: var(--danger); font-size: 0.65rem; font-weight: bold; display: block; line-height: 1.1; }
+        .linha-id { font-weight: bold; color: #64748b; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="statusDb" style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 10px;">Bases: carregando...</div>
+    
+    <div class="header-unidade" id="boxUnidade">
+        <span id="cnesTopo" style="font-size: 0.8rem; color: #64748b;">CNES: 0000000</span>
+        <h2 id="nomeUnidadeTopo">NOME DA UNIDADE</h2>
+    </div>
+
+    <div class="upload-area" id="dropZoneEscala">
+        <strong>Arraste a Escala CSV aqui</strong><br>
+        <small id="statusEscala">ou clique para selecionar</small>
+        <input type="file" id="fileEscala" accept=".csv" style="display: none;">
+    </div>
+
+    <div class="actions">
+        <button class="btn-export" id="btnExportar">📥 Exportar Revisado</button>
+        <div style="font-size: 0.8rem; margin-left: auto;">
+            Total: <b id="totalLinhas">0</b> | Alertas: <b id="totalConflitos" style="color:red">0</b>
+        </div>
+    </div>
+
+    <div style="overflow-x: auto; max-height: 600px;">
+        <table id="tabelaDados">
+            <thead>
+                <tr>
+                    <th style="width: 35px;">#</th>
+                    <th style="width: 120px;">Alertas / Ação</th>
+                    <th style="width: 180px;">Procedimento</th>
+                    <th style="width: 180px;">Profissional (CPF)</th>
+                    <th style="width: 130px;">Vigência (Início - Fim)</th>
+                    <th style="width: 100px;">Dias</th>
+                    <th style="width: 60px;">Início</th>
+                    <th style="width: 60px;">Fim</th>
+                    <th style="width: 110px;">Vagas / Tipo</th>
+                    <th style="width: 50px;">Min</th>
+                    <th style="width: 85px;">Agenda</th>
+                    <th style="width: 80px;">v_pa_item</th>
+                    <th style="width: 100px;">Observação</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let dadosEscala = [];
+    let dicioProcs = {}, dicioProf = {}, dicioUnid = {}, procsPorUnidade = {};
+
+    async function carregarBases() {
+        try {
+            const [resProcs, resProf] = await Promise.all([
+                fetch('procedimentos_unidades.csv').then(r => r.text()),
+                fetch('profissionais.csv').then(r => r.text())
+            ]);
+            
+            resProf.split('\n').slice(1).forEach(l => {
+                const c = l.split(';');
+                if (c[0] && c[1]) dicioProf[c[0].trim().padStart(11, '0')] = c[1].trim();
+            });
+
+            resProcs.split('\n').slice(1).forEach(l => {
+                const c = l.split(';');
+                if (c.length < 3) return;
+                
+                const cnes = c[0].trim().padStart(7, '0');
+                const nomeUnidade = c[1].trim();
+                const codProc = c[2].trim().padStart(7, '0');
+                const descProc = c[3].trim();
+                const tipoProc = c[6] ? c[6].trim().toUpperCase() : 'FISICO';
+                const regulado = c[7] ? c[7].trim().toUpperCase() === 'SIM' : false;
+
+                dicioUnid[cnes] = nomeUnidade;
+                
+                if (!procsPorUnidade[cnes]) procsPorUnidade[cnes] = new Set();
+                procsPorUnidade[cnes].add(codProc);
+
+                dicioProcs[codProc] = {
+                    nome: descProc,
+                    tipo: tipoProc,
+                    regulado: regulado,
+                    isRetorno: descProc.includes('RETORNO')
+                };
+            });
+            document.getElementById('statusDb').textContent = "✅ Bases de dados prontas.";
+        } catch (e) {
+            document.getElementById('statusDb').textContent = "⚠️ Erro nas referências.";
+        }
+    }
+
+    function t2m(t) {
+        if (!t || !t.includes(':')) return 0;
+        const [h, m] = t.split(':').map(Number);
+        return (h * 60) + m;
+    }
+
+    function m2t(m) {
+        const h = Math.floor(m / 60).toString().padStart(2, '0');
+        const min = (m % 60).toString().padStart(2, '0');
+        return `${h}:${min}`;
+    }
+
+    function round5(m) {
+        return Math.ceil(m / 5) * 5;
+    }
+
+    document.getElementById('dropZoneEscala').onclick = () => document.getElementById('fileEscala').click();
+    document.getElementById('fileEscala').onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => parseCSV(ev.target.result);
+        reader.readAsText(file, 'ISO-8859-1');
+    };
+
+    function parseCSV(text) {
+        const linhas = text.split('\n').filter(l => l.trim() !== '');
+        dadosEscala = linhas.slice(1).map((linha, idx) => {
+            const c = linha.split(';');
+            let tipo = 'F', valorVaga = c[12], mins = c[13];
+            if (parseInt(c[14]) > 0) { tipo = 'T'; valorVaga = c[14]; mins = c[15]; }
+            else if (parseInt(c[16]) > 0) { tipo = 'R'; valorVaga = c[16]; mins = c[17]; }
+            return {
+                idx, ups: c[0]?.trim().padStart(7, '0'), pa: c[1]?.trim().padStart(7, '0'), 
+                cpf: c[2]?.trim().padStart(11, '0'), st_vig: c[3], vini: c[4], vfim: c[5], 
+                quebra: c[6], agenda: c[7], ativo: c[8], dia: c[9], hini: c[10], hfim: c[11],
+                tipo, valorVaga, mins, sub: c[18] || '', obs: c[19] || ''
+            };
+        });
+        if (dadosEscala.length > 0) {
+            const p = dadosEscala[0];
+            document.getElementById('boxUnidade').style.display = 'block';
+            document.getElementById('cnesTopo').textContent = `CNES: ${p.ups}`;
+            document.getElementById('nomeUnidadeTopo').textContent = dicioUnid[p.ups] || "Unidade Não Identificada";
+        }
+        renderTable();
+    }
+
+    function renderTable() {
+        const tbody = document.querySelector('#tabelaDados tbody');
+        tbody.innerHTML = '';
+        let totalAlertas = 0;
+
+        dadosEscala.forEach((esc, i) => {
+            let conflitos = [];
+            const infoBase = dicioProcs[esc.pa];
+            
+            // 1. Validação de Cadastro na Unidade
+            if (procsPorUnidade[esc.ups] && !procsPorUnidade[esc.ups].has(esc.pa)) {
+                conflitos.push({ tipo: 'CADASTRO', msg: "❌ PA não Cadastrado" });
+            }
+
+            // 2. Validação de Choque de Horário (Mesmo CPF + PA)
+            const refIdx = dadosEscala.findIndex((p, idx) => 
+                idx < i && p.pa === esc.pa && p.cpf === esc.cpf && p.dia === esc.dia && p.vini === esc.vini &&
+                (t2m(esc.hini) < t2m(p.hfim) && t2m(p.hini) < t2m(esc.hfim))
+            );
+            if (refIdx !== -1) conflitos.push({ tipo: 'HORA', msg: "⚠️ Choque Horário", ref: refIdx });
+
+            // 3. Regras de Vagas e Agenda
+            if (infoBase) {
+                if (infoBase.regulado && esc.tipo !== 'R') {
+                    conflitos.push({ tipo: 'VAGA_R', msg: "⚠️ Deve ser Reserva" });
+                } else if (infoBase.isRetorno) {
+                    if (esc.tipo !== 'T') conflitos.push({ tipo: 'VAGA_T', msg: "⚠️ Deve ser Retorno" });
+                    if (esc.agenda === '0') conflitos.push({ tipo: 'REDE_RET', msg: "⚠️ Retorno deve ser Local" });
+                } else if (!infoBase.regulado && !infoBase.isRetorno) {
+                    if (esc.agenda === '0' && esc.tipo !== 'F') conflitos.push({ tipo: 'VAGA_F', msg: "⚠️ Rede deve ser Ficha" });
+                    if (esc.agenda === '1' && esc.tipo !== 'T') conflitos.push({ tipo: 'VAGA_T', msg: "⚠️ Local deve ser Retorno" });
+                }
+            }
+
+            if (conflitos.length > 0) totalAlertas++;
+
+            const tr = document.createElement('tr');
+            if (conflitos.length > 0) tr.className = 'conflito';
+
+            tr.innerHTML = `
+                <td class="linha-id">${i + 1}</td>
+                <td>
+                    ${conflitos.map(c => `<span class="msg-erro">${c.msg}</span>`).join('')}
+                    ${conflitos.some(c => c.tipo === 'HORA') ? `<button class="btn-fix" onclick="fix(${i}, 'HORA', ${conflitos.find(c => c.tipo==='HORA').ref})">⚡ Ajustar Hora</button>` : ''}
+                    <button class="btn-del" onclick="remover(${i})">Deletar</button>
+                </td>
+                <td>
+                    <span style="font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${infoBase?.nome || '---'}</span>
+                    <input type="text" value="${esc.pa}" onchange="upd(${i},'pa',this.value.padStart(7,'0'))" style="width:60px; font-weight:bold">
+                </td>
+                <td>
+                    <span style="font-weight:600; display:block">${dicioProf[esc.cpf] || '---'}</span>
+                    <input type="text" value="${esc.cpf}" onchange="upd(${i},'cpf',this.value.padStart(11,'0'))">
+                </td>
+                <td style="display:flex; gap:2px">
+                    <input type="text" value="${esc.vini}" onchange="upd(${i},'vini',this.value)" style="font-size:0.65rem; width:50%">
+                    <input type="text" value="${esc.vfim}" onchange="upd(${i},'vfim',this.value)" style="font-size:0.65rem; width:50%">
+                </td>
+                <td><input type="text" value="${esc.dia}" onchange="upd(${i},'dia',this.value)"></td>
+                <td><input type="text" value="${esc.hini}" onchange="upd(${i},'hini',this.value)"></td>
+                <td><input type="text" value="${esc.hfim}" onchange="upd(${i},'hfim',this.value)"></td>
+                <td style="display:flex; gap:2px; align-items:center; border-bottom:none">
+                    <input type="number" value="${esc.valorVaga}" onchange="upd(${i},'valorVaga',this.value)" style="width:35px; font-weight:bold">
+                    <select onchange="upd(${i},'tipo',this.value)" style="width:45px; background:#f1f5f9">
+                        <option value="F" ${esc.tipo=='F'?'selected':''}>F</option>
+                        <option value="R" ${esc.tipo=='R'?'selected':''}>R</option>
+                        <option value="T" ${esc.tipo=='T'?'selected':''}>T</option>
+                    </select>
+                </td>
+                <td><input type="number" value="${esc.mins}" onchange="upd(${i},'mins',this.value)"></td>
+                <td>
+                    <span class="tag-badge ${esc.agenda == '0' ? 'tag-rede' : 'tag-local'}">${esc.agenda == '0' ? 'REDE' : 'LOCAL'}</span>
+                    <select onchange="upd(${i},'agenda',this.value)" style="margin-top:4px">
+                        <option value="0" ${esc.agenda=='0'?'selected':''}>REDE</option>
+                        <option value="1" ${esc.agenda=='1'?'selected':''}>LOCAL</option>
+                    </select>
+                </td>
+                <td><input type="text" value="${esc.sub}" onchange="upd(${i},'sub',this.value)"></td>
+                <td><input type="text" value="${esc.obs}" onchange="upd(${i},'obs',this.value)" style="font-size:0.65rem"></td>
+            `;
+            tbody.appendChild(tr);
+        });
+        document.getElementById('totalLinhas').textContent = dadosEscala.length;
+        document.getElementById('totalConflitos').textContent = totalAlertas;
+    }
+
+    function calcularHoraFinal(esc) {
+        const info = dicioProcs[esc.pa];
+        if (info?.tipo === 'FINANCEIRO' || (esc.sub && esc.sub.startsWith('FIN'))) return m2t(t2m(esc.hini) + 5);
+        const totalMins = parseInt(esc.valorVaga || 0) * parseInt(esc.mins || 0);
+        return m2t(totalMins === 0 ? t2m(esc.hini) + 5 : round5(t2m(esc.hini) + totalMins));
+    }
+
+    window.fix = (idx, tipo, refIdx) => {
+        const esc = dadosEscala[idx];
+        if (tipo === 'HORA') {
+            const ref = dadosEscala[refIdx];
+            esc.hini = ref.hfim;
+            esc.hfim = calcularHoraFinal(esc);
+        }
+        renderTable();
+    };
+
+    window.remover = (idx) => { dadosEscala.splice(idx, 1); renderTable(); };
+
+    window.upd = (i, f, v) => { 
+        dadosEscala[i][f] = v; 
+        if(['hini', 'valorVaga', 'mins', 'pa'].includes(f)) dadosEscala[i].hfim = calcularHoraFinal(dadosEscala[i]);
+        renderTable(); 
+    };
+
+    document.getElementById('btnExportar').onclick = () => {
+        if (dadosEscala.length === 0) return;
+        let csv = "ups;pa;cpf;st_vigencia;dt_vigencia_inicial;dt_vigencia_final;st_quebra;tp_agenda;st_ativo;dia;hora_inicial;hora_final;fichas;fichas_min;retornos;retornos_min;reservas;reservas_min;v_pa_item;ds_observacao\n";
+        dadosEscala.forEach(e => {
+            let f=0, fm=0, rt=0, rtm=0, rs=0, rsm=0;
+            if(e.tipo==='F'){ f=e.valorVaga; fm=e.mins; }
+            else if(e.tipo==='T'){ rt=e.valorVaga; rtm=e.mins; }
+            else if(e.tipo==='R'){ rs=e.valorVaga; rsm=e.mins; }
+            csv += `${e.ups};${e.pa};${e.cpf};${e.st_vig};${e.vini};${e.vfim};${e.quebra};${e.agenda};${e.ativo};${e.dia};${e.hini};${e.hfim};${f};${fm};${rt};${rtm};${rs};${rsm};${e.sub};${e.obs}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=iso-8859-1;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `REVISADO_${document.getElementById('nomeUnidadeTopo').textContent.replace(/\s+/g,'_')}.csv`;
+        link.click();
+    };
+
+    document.addEventListener('DOMContentLoaded', carregarBases);
+</script>
+</body>
+</html>

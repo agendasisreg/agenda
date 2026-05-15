@@ -118,7 +118,7 @@
                 const cnes = c[0].trim().padStart(7, '0');
                 const codProc = c[2].trim().padStart(7, '0');
                 const codSub = c[4] ? c[4].trim() : "";
-                const regulado = c[7] ? c[7].trim().toUpperCase() === 'SIM' : false;
+                const regulado = c[7] ? c[7].trim().toUpperCase().includes('SIM') : false;
 
                 dicioUnid[cnes] = c[1].trim();
                 
@@ -204,13 +204,26 @@
                 conflitos.push({ tipo: 'CADASTRO', msg: "❌ PA não Cadastrado" });
             }
 
-            // 2. Validação de Subitem (v_pa_item)
-            if (esc.sub && subItemsPorUnidade[esc.ups] && subItemsPorUnidade[esc.ups][esc.pa]) {
-                if (!subItemsPorUnidade[esc.ups][esc.pa].has(esc.sub)) {
+            // 2. Validação de Subitem (v_pa_item) - AJUSTADA PARA MULTIPLOS ITENS
+            if (esc.sub) {
+                const subItensLista = esc.sub.split(/\s+/).filter(x => x.length > 0);
+                const subsCadastrados = subItemsPorUnidade[esc.ups]?.[esc.pa];
+                
+                let temErroSub = false;
+                if (!subsCadastrados) {
+                    temErroSub = true;
+                } else {
+                    for (const s of subItensLista) {
+                        if (!subsCadastrados.has(s.trim())) {
+                            temErroSub = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (temErroSub) {
                     conflitos.push({ tipo: 'SUBITEM', msg: "❌ Subitem não Cadastrado" });
                 }
-            } else if (esc.sub) {
-                 conflitos.push({ tipo: 'SUBITEM', msg: "❌ Subitem não Cadastrado" });
             }
 
             // 3. Choque de Horário

@@ -108,13 +108,16 @@
                         </div>
                         <div class="col-3">
                             <label>Tipo Escala</label>
-                            <select id="tipoEscala" required>
-                                <option value="0">Ordem de Chegada</option>
-                                <option value="1">Horário Agendado</option>
+                            <!-- disabled impede interação visual e funcional -->
+                            <select id="tipoEscala" disabled>
+                                <option value="0" selected>Ordem de Chegada</option>
                             </select>
+                            
+                            <!-- Hidden field para garantir que o valor seja enviado no form -->
+                            <input type="hidden" name="tipoEscala" value="0">
                         </div>
                         <div class="col-3">
-                            <label>Tipo Agenda</label>
+                            <label>Tipo Oferta</label>
                             <select id="tipoAgenda" required>
                                 <option value="0">Rede</option>
                                 <option value="1">Local</option>
